@@ -42,13 +42,6 @@ since = "0.1.0"
 
 [[divergence]]
 case = "global"
-check = "specfile-support"
-kind = "behaviour"
-reason = "A .spec input is reported as '(none): E: fatal error while reading <path>: .spec support is not implemented yet' with exit 3, where the reference reads it through FakePkg and runs SpecCheck. The check runtime exists but no check is ported yet, so the input is refused loudly rather than silently ignored; the FakePkg milestone replaces this."
-since = "0.1.0"
-
-[[divergence]]
-case = "global"
 check = "profile-report"
 kind = "behaviour"
 reason = "-T/--profile prints rpmcrab's own per-check wall-time report; the reference prints a CPython cProfile dump, which a Rust port cannot reproduce without a profiler dependency. -t, whose output is deterministic, is reproduced column for column."
@@ -87,4 +80,32 @@ case = "global"
 check = "check-error-handling"
 kind = "behaviour"
 reason = "A check that panics aborts the run with Rust's panic status 101 and no rendered report; the reference propagates the exception with a traceback and exits 1. A buggy check is not contained per check or per package, deliberately: a linter that swallowed a check bug would report incomplete coverage as a clean run."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "self-obsoletion"
+kind = "behaviour"
+reason = "The reference emits self-obsoletion for the documented package-merge pattern (Provides: X = EVR with Obsoletes: X <= EVR); rpmcrab exempts it. Upstream's behaviour is the bug (rpmlint#1599, fixes rpmlint#438): a merge-pattern Obsoletes is not a self-obsoletion."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "spelling-error"
+kind = "behaviour"
+reason = "spelling-error is not emitted: no enchant backend is wired up. The design records spelling as free to degrade gracefully (DESIGN.md:368-369)."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "postin-without-ldconfig"
+kind = "behaviour"
+reason = "The reference only searches the scriptlet body for ldconfig, ignoring the -p interpreter. rpmcrab honors -p ldconfig: %post -p /sbin/ldconfig satisfies the check. See rpmlint#1602 which fixes rpmlint#550."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "logrotate-log-dir-not-packaged"
+kind = "behaviour"
+reason = "The reference fires on /var/log itself; rpmcrab excludes the base /var/log directory per rpmlint#551. Subdirectories like /var/log/samba still trigger."
 since = "0.1.0"

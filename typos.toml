@@ -23,3 +23,7 @@ extend-exclude = [
 # Load-bearing upstream spellings captured verbatim in the frozen output
 # contract. Add a one-line reason per entry; retire an entry only when its last
 # real occurrence is gone.
+# self-obsoletion is the rpmlint check name (rpmlint#438), not a misspelling.
+obsoletion = "obsoletion" 
+# non-owner-writeable-only-crontab-file is the upstream check name.
+writeable = "writeable"
