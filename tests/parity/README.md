@@ -126,3 +126,22 @@ Then fill in `cases/<name>/meta.toml`'s `[source] description`, review the
 diff, and commit. External tools rpmlint shells out to (`checkbashisms`,
 `dash`, `desktop-file-validate`, `readelf`, `objdump`, `ldd`, `file`) must be
 on `PATH` — the setup script warns about any that are missing.
+
+## Reference coverage audit
+
+`scripts/audit-reference-coverage.py` statically audits that every finding
+the reference *can* emit is either emitted by the port or recorded in the
+ledger. It parses `rpmlint/checks/*.py` with `ast`, resolves each
+`add_info` finding name through literals, concatenation, `%`-templates,
+f-strings, and variable bindings (including cross-module `self.prefix`,
+dict subscripts, and TOML data), and does the same for the port's
+`crates/rpmcrab-core/src/checks/*.rs` via `format!` templates and `let`
+bindings.
+
+```sh
+python3 scripts/audit-reference-coverage.py [REF_PATH]
+```
+
+A finding counts as ledgered when its check module has a `kind = "missing"`
+entry, or its name appears in a divergence entry's reason text. Sites the
+resolver cannot handle are reported as UNRESOLVED, never silently dropped.
