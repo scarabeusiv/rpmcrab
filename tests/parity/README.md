@@ -19,7 +19,8 @@ Two things live here:
 "Don't reproduce rpmlint's bugs, but don't silently break its consumers." Both
 halves are enforced mechanically: the cases catch *accidental* drift from the
 frozen surface, and the ledger forces every *intentional* drift to be
-justified and linked to an upstream issue.
+justified — with the upstream issue/PR linked when the divergence is
+tracked there (`upstream` is optional by decision; see `docs/DESIGN.md` §6.2).
 
 ## Case layout
 
