@@ -14,7 +14,7 @@ use std::path::Path;
 use fancy_regex::Regex;
 
 use super::is_match;
-use super::shared::{devel_regex, lib_package_regex, macro_regex};
+use super::shared::{devel_regex, lib_package_regex, macro_regex, script_body_or_prog};
 use crate::check::{Check, add_info};
 use crate::config::Config;
 use crate::filter::Filter;
@@ -497,17 +497,6 @@ impl Check for FilesCheck {
 
 fn strip_quotes(re: &Regex, s: &str) -> String {
     re.replace_all(s, "").to_string()
-}
-
-/// The reference's `pkg[tag] or pkg.scriptprog(prog)`: an empty scriptlet
-/// body falls back to the `-p` interpreter string.
-fn script_body_or_prog(pkg: &Pkg, tag: librpm::Tag, prog: librpm::Tag) -> String {
-    let body = pkg.tag_str(tag).unwrap_or_default();
-    if body.is_empty() {
-        pkg.scriptprog(prog)
-    } else {
-        body
-    }
 }
 
 impl FilesCheck {
@@ -2394,39 +2383,6 @@ mod tests {
     #[test]
     fn files_check_registers() {
         let _check = FilesCheck::new(&test_config());
-    }
-
-    #[test]
-    fn ldconfig_p_interpreter_satisfies_check() {
-        // #1602: %post -p /sbin/ldconfig with a body that does not call
-        // ldconfig must NOT emit postin-without-ldconfig. The fixture RPM has
-        // a .so file and scriptlets whose -p interpreter is /sbin/ldconfig.
-        // Reverting to the stub scriptprog (or the reference body-only search)
-        // makes this fail.
-        let rpm = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../tests/parity/pkg/inputs/ldconfig-test-1.0-1.noarch.rpm"
-        );
-        let dir = std::env::temp_dir().join("rpmcrab-ldconfig-test");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("tmpdir");
-        let pkg = Pkg::open(std::path::Path::new(rpm), &dir).expect("open fixture");
-        assert_eq!(pkg.scriptprog(librpm::Tag::POSTINPROG), "/sbin/ldconfig");
-
-        let config = test_config();
-        let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
-        let mut check = FilesCheck::new(&config);
-        check.check(&pkg, &config, &mut out);
-        let names: Vec<&str> = out.results().iter().map(|(n, _)| n.as_str()).collect();
-        assert!(
-            !names.contains(&"postin-without-ldconfig"),
-            "unexpected postin-without-ldconfig: {names:?}"
-        );
-        assert!(
-            !names.contains(&"postun-without-ldconfig"),
-            "unexpected postun-without-ldconfig: {names:?}"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -5,6 +5,12 @@
 # The ledger also records deliberate *behavioural* departures that no corpus
 # case pins (kind = "behaviour"), so they are reviewed rather than accidental.
 
+# Checks the reference has but the port does not are recorded one entry per
+# check (kind = "missing", check = the exact Python module name). The set is
+# derived, not hand-maintained: scripts/gen-reference-checks.py regenerates
+# the reference list, and the divergences_missing test fails if the entries
+# drift from reference-minus-registry.
+
 [[divergence]]
 case = "global"
 check = "pkg-layer"
@@ -225,4 +231,224 @@ case = "global"
 check = "binaries-dependency-scope"
 kind = "behaviour"
 reason = "The reference runs its ldd-based dependency analysis only for installed packages; rpmcrab runs the DT_NEEDED-based analysis for extracted files too. This is also what makes unused-direct-shlib-dependency impossible to replicate (no ldd -u on extracted files)."
+since = "0.1.0"
+
+# Unported reference checks, one kind = "missing" entry per check
+# (derived; see the header comment).
+
+[[divergence]]
+case = "global"
+check = "AlternativesCheck"
+kind = "missing"
+reason = "AlternativesCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "AppDataCheck"
+kind = "missing"
+reason = "AppDataCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "AtomicUpdateCheck"
+kind = "missing"
+reason = "AtomicUpdateCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "BashismsCheck"
+kind = "missing"
+reason = "BashismsCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "BrandingPolicyCheck"
+kind = "missing"
+reason = "BrandingPolicyCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "BuildRootAndDateCheck"
+kind = "missing"
+reason = "BuildRootAndDateCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "DBusPolicyCheck"
+kind = "missing"
+reason = "DBusPolicyCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "DeviceFilesCheck"
+kind = "missing"
+reason = "DeviceFilesCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "ErlangCheck"
+kind = "missing"
+reason = "ErlangCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "FileDigestCheck"
+kind = "missing"
+reason = "FileDigestCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "FileMetadataCheck"
+kind = "missing"
+reason = "FileMetadataCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "FilelistCheck"
+kind = "missing"
+reason = "FilelistCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "InitScriptCheck"
+kind = "missing"
+reason = "InitScriptCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "KMPPolicyCheck"
+kind = "missing"
+reason = "KMPPolicyCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "LibraryDependencyCheck"
+kind = "missing"
+reason = "LibraryDependencyCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "LogrotateCheck"
+kind = "missing"
+reason = "LogrotateCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "MenuCheck"
+kind = "missing"
+reason = "MenuCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "MenuXDGCheck"
+kind = "missing"
+reason = "MenuXDGCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "PolkitCheck"
+kind = "missing"
+reason = "PolkitCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "PostCheck"
+kind = "missing"
+reason = "PostCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "PythonCheck"
+kind = "missing"
+reason = "PythonCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "SELinuxIndependentModuleCheck"
+kind = "missing"
+reason = "SELinuxIndependentModuleCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "SUIDPermissionsCheck"
+kind = "missing"
+reason = "SUIDPermissionsCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "SharedLibraryPolicyCheck"
+kind = "missing"
+reason = "SharedLibraryPolicyCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "SignatureCheck"
+kind = "missing"
+reason = "SignatureCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "SourceCheck"
+kind = "missing"
+reason = "SourceCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "SysVInitOnSystemdCheck"
+kind = "missing"
+reason = "SysVInitOnSystemdCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "SystemdInstallCheck"
+kind = "missing"
+reason = "SystemdInstallCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "SystemdTmpfilesCheck"
+kind = "missing"
+reason = "SystemdTmpfilesCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "TmpFilesCheck"
+kind = "missing"
+reason = "TmpFilesCheck is not ported yet; its findings are absent from the port."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "WorldWritableCheck"
+kind = "missing"
+reason = "WorldWritableCheck is not ported yet; its findings are absent from the port."
 since = "0.1.0"

@@ -163,13 +163,31 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("hello.txt");
         std::fs::write(&p, "hello\n").unwrap();
-        // Equal to python-magic's `from_file` (rpmlint's `get_magic`).
-        assert_eq!(file_magic(&p), "ASCII text");
+        // Equal to python-magic's `from_file` (rpmlint's `get_magic`). The
+        // exact `file -b` vocabulary is a libmagic-version detail, so this
+        // asserts the documented property instead of the string: file(1)
+        // guarantees the description of a readable text file contains the
+        // word "text" ("Users depend on knowing that all the readable files
+        // in a directory have the word 'text' printed"). Observed:
+        // "ASCII text" on file-5.41 and file-5.48. ("text/plain" is the
+        // `file -i` MIME form, never `file -b` output, so it is not a
+        // spelling to accept here.)
+        let magic = file_magic(&p);
+        assert!(
+            magic.to_lowercase().contains("text"),
+            "expected libmagic to describe a text file as text, got {magic:?}"
+        );
     }
 
     #[test]
     fn file_magic_missing_is_empty() {
+        // rpmlint's `get_magic` returns '' when the path cannot be read:
+        // `file -b` prints `cannot open ...` (still exit 0) or fails
+        // outright, and `file_magic` maps both to ''. The degenerate empty
+        // path reports `cannot open ...` the same way on every libmagic
+        // version checked (file-5.41, file-5.48).
         assert_eq!(file_magic(Path::new("/no/such/file/xyz")), "");
+        assert_eq!(file_magic(Path::new("")), "");
     }
 
     #[test]
