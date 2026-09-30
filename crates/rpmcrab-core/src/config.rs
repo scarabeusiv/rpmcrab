@@ -58,6 +58,9 @@ pub struct Config {
     pub blocked_filters: Vec<String>,
     /// `BadnessThreshold` (default -1).
     pub badness_threshold: i64,
+    /// `Flavor` (default `"opensuse"`); unknown values warn and fall back to
+    /// `"opensuse"`.
+    pub flavor: String,
 }
 
 impl Config {
@@ -79,6 +82,19 @@ impl Config {
             .and_then(toml::Value::as_table)
             .map(|t| t.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
+        let flavor = self
+            .configuration
+            .get("Flavor")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("opensuse")
+            .to_ascii_lowercase();
+        self.flavor = match flavor.as_str() {
+            "opensuse" | "slfo" => flavor,
+            other => {
+                eprintln!("warning: unknown Flavor {other:?}, falling back to \"opensuse\"");
+                "opensuse".to_string()
+            }
+        };
     }
 
     /// `ExtractDir` — where payloads are unpacked. `""` (the default) means the
@@ -107,6 +123,11 @@ impl Config {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// True when the `slfo` flavor is selected.
+    pub fn is_slfo(&self) -> bool {
+        self.flavor == "slfo"
     }
 }
 
@@ -482,5 +503,35 @@ mod tests {
             cfg.rpmlintrc_filters,
             vec!["no-return-in-nonvoid-function".to_string()]
         );
+    }
+
+    #[test]
+    fn flavor_defaults_to_opensuse() {
+        let mut config = Config::default();
+        config.finalize();
+        assert_eq!(config.flavor, "opensuse");
+        assert!(!config.is_slfo());
+    }
+
+    #[test]
+    fn flavor_is_case_insensitive() {
+        let mut config = Config {
+            configuration: table("Flavor = \"SLFO\""),
+            ..Default::default()
+        };
+        config.finalize();
+        assert_eq!(config.flavor, "slfo");
+        assert!(config.is_slfo());
+    }
+
+    #[test]
+    fn unknown_flavor_warns_and_falls_back_to_opensuse() {
+        let mut config = Config {
+            configuration: table("Flavor = \"sled\""),
+            ..Default::default()
+        };
+        config.finalize();
+        assert_eq!(config.flavor, "opensuse");
+        assert!(!config.is_slfo());
     }
 }

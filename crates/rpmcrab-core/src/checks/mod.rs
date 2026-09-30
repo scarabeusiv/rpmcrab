@@ -1,6 +1,7 @@
 //! The lint checks, keyed by their Python module names (`TagsCheck`, …).
 
 pub mod binaries;
+pub mod buildroot;
 pub mod files;
 pub mod shared;
 pub mod spec;

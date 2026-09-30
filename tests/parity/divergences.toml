@@ -199,3 +199,21 @@ check = "executable-stack"
 kind = "behaviour"
 reason = "Fixed behaviour: the executable-stack arch list also matches aarch64. The reference's `arm.*` does not match the string 'aarch64', so the reference skips the check on ARM64; rpmcrab includes it."
 since = "0.1.0"
+
+[[divergence]]
+case = "buildroot"
+check = "file-contains-date-and-time"
+flavor = "slfo"
+kind = "behaviour"
+reason = "Severity is Error under Flavor=\"slfo\" (immutable images require reproducible builds); Warning otherwise, matching the frozen 2.10.0 opensuse reference. The check is hardened vs the reference: documentation paths and changelog files are skipped to avoid the false positives noted in upstream #1317."
+upstream = "https://github.com/rpm-software-management/rpmlint/issues/1317"
+since = "0.1.0"
+
+[[divergence]]
+case = "buildroot"
+check = "file-contains-current-date"
+flavor = "slfo"
+kind = "behaviour"
+reason = "Severity is Error under Flavor=\"slfo\" (immutable images require reproducible builds); Warning otherwise, matching the frozen 2.10.0 opensuse reference. The check is hardened vs the reference: documentation paths and changelog files are skipped to avoid the false positives noted in upstream #1317."
+upstream = "https://github.com/rpm-software-management/rpmlint/issues/1317"
+since = "0.1.0"

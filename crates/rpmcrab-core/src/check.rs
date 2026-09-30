@@ -133,6 +133,9 @@ pub fn build(name: &str, config: &Config) -> Option<Box<dyn Check>> {
         "BinariesCheck" => Some(Box::new(crate::checks::binaries::BinariesCheck::new(
             config,
         ))),
+        "BuildRootAndDateCheck" => Some(Box::new(
+            crate::checks::buildroot::BuildRootAndDateCheck::new(config),
+        )),
         _ => None,
     }
 }
