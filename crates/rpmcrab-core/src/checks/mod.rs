@@ -12,6 +12,7 @@ pub mod lsb;
 pub mod mixed_ownership;
 pub mod pam_modules;
 pub mod pkg_config;
+pub mod post;
 pub mod shared;
 pub mod spec;
 pub mod tags;

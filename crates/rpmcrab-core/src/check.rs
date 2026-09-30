@@ -162,6 +162,7 @@ pub fn build(name: &str, config: &Config) -> Option<Box<dyn Check>> {
             config,
         ))),
         "LSBCheck" => Some(Box::new(crate::checks::lsb::LSBCheck::new(config))),
+        "PostCheck" => Some(Box::new(crate::checks::post::PostCheck::new(config))),
         _ => None,
     }
 }
