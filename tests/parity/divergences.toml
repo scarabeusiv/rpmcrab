@@ -314,6 +314,13 @@ since = "0.1.0"
 
 [[divergence]]
 case = "global"
+check = "polkit-untracked-privilege"
+kind = "behaviour"
+reason = "Deliberate fix of a reference bug (PolkitCheck.py: check_action does `action.getElementsByTagName('defaults')[0]`, which raises IndexError -- not the caught KeyError -- when <defaults> is absent, crashing the check). The port treats the missing settings as `no` per the polkit default and reports polkit-untracked-privilege instead of crashing."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
 check = "AtomicUpdateCheck"
 kind = "behaviour"
 reason = "A non-string element in AtomicAllowedDirs/AtomicDisallowedSubdirs (e.g. AtomicDisallowedSubdirs = [42]) panics at construction; the reference raises TypeError later, at check time. The port deliberately fails fast on a misconfigured type instead of reproducing the reference's deferred failure."
@@ -487,3 +494,9 @@ kind = "behaviour"
 reason = "AlternativesCheck.py:216 interpolates the package-chosen symlink basename into a regex with no escaping, so a basename carrying an unbalanced bracket makes re.compile raise. rpmcrab skips the empty-libalternatives-directory finding for such a path instead of aborting the run, because a package must not be able to panic the linter. A path whose basename is valid regex -- every path the reference actually exercises -- behaves identically."
 since = "0.1.0"
 
+[[divergence]]
+case = "global"
+check = "non-utf8-desktopfile"
+kind = "detail"
+reason = "The reference formats the Python UnicodeDecodeError (`'utf-8' codec can't decode byte 0xff in position 0: invalid start byte`); the port formats Rust's FromUtf8Error (`invalid utf-8 sequence of 1 bytes from index 0`). The finding name, severity, and `Unicode error:` prefix match; the error details differ."
+since = "0.1.0"
