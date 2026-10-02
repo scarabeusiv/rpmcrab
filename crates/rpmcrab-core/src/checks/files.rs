@@ -1308,7 +1308,7 @@ impl FilesCheck {
                 }
             }
         }
-        st.hardlinks.entry(key).or_default().push(fname.to_string());
+        st.hardlinks.entry(key).or_default();
     }
 
     fn check_file_crond(&self, pkg: &Pkg, fname: &str, pkgfile: &PkgFile, out: &mut Filter) {
@@ -1389,7 +1389,10 @@ impl FilesCheck {
             if fname.starts_with(bindir) {
                 let rest = fname.strip_prefix(bindir).unwrap_or("");
                 if !rest.contains('/') {
-                    st.bindir_exes.entry(rest.to_string()).or_default();
+                    st.bindir_exes
+                        .entry(rest.to_string())
+                        .or_default()
+                        .push(fname.to_string());
                 }
                 break;
             }
@@ -3050,6 +3053,34 @@ mod tests {
             lines
                 .iter()
                 .all(|l| l.contains("no-manual-page-for-binary"))
+        );
+    }
+
+    #[test]
+    fn duplicate_executable_fires_for_same_name_in_two_bindirs() {
+        let dir = tempfile::TempDir::new().expect("tmpdir");
+        let pkg = Pkg::open(
+            std::path::Path::new(&fixture_path("filescheck-depmod-ok-1.0-1.noarch.rpm")),
+            dir.path(),
+        )
+        .expect("open fixture");
+        let config = Config::default();
+        let check = FilesCheck::new(&config);
+        let mut st = PkgState::default();
+        st.bindir_exes
+            .entry("mytool".to_string())
+            .or_default()
+            .push("/usr/bin/mytool".to_string());
+        st.bindir_exes
+            .entry("mytool".to_string())
+            .or_default()
+            .push("/bin/mytool".to_string());
+        let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
+        check.check_bindir_exes(&pkg, &st, &mut out);
+        let names: Vec<String> = out.results().iter().map(|(n, _)| n.clone()).collect();
+        assert!(
+            names.contains(&"duplicate-executable".to_string()),
+            "expected duplicate-executable"
         );
     }
 }
