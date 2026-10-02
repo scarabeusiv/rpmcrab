@@ -4,6 +4,44 @@
 //! (`add_info`), before the badness total and the per-level counters are
 //! incremented, so a suppressed finding is invisible to the footer and the exit
 //! code, not merely hidden from stdout.
+//!
+//! ## Badness counting oddities (inherited from the reference, flagged not fixed)
+//!
+//! The scoring logic below is a line-for-line port of `filter.py` `add_info`.
+//! Tom has flagged that rpmlint's counting looks "wrong" in several ways; the
+//! port matches the reference exactly for parity, but the oddities are:
+//!
+//! 1. **Invisible default badness.** An `E` not listed in `[Scoring]` gets
+//!    badness 1, which is added to the score but never displayed (only `> 1`
+//!    renders `(Badness: N)`). A summary of "40 badness" can come from 40
+//!    plain errors with zero visible annotation — the user cannot tell where
+//!    the number came from.
+//!
+//! 2. **Strict-mode score inflation.** `--strict` promotes every finding to
+//!    `E`, and non-`[Scoring]` findings then get the default badness 1. The
+//!    score degrades into a plain finding count, not a weighted severity sum.
+//!
+//! 3. **The `> 1` display threshold.** A configured badness of 1 is invisible,
+//!    indistinguishable from the default. Only 2+ renders. There is no way to
+//!    tell "I configured this as 1" apart from "default".
+//!
+//! 4. **Mixed units in the sum.** The score adds configured weights (e.g.
+//!    10000) to default 1s. "10040 badness" could be 1 serious + 40 trivial
+//!    findings, or 10040 trivial ones — the number is ambiguous without the
+//!    per-finding breakdown, which is hidden for 1s per (1).
+//!
+//! 5. **Threshold is strict `>`, not `>=`.** `BadnessThreshold` aborts only
+//!    when `score > threshold`; a score exactly equal to the threshold does
+//!    not abort. Off-by-one surprise for anyone setting the threshold to their
+//!    current score.
+//!
+//! 6. **Negative badness is allowed.** `int()` accepts negatives; a negative
+//!    configured badness downgrades `E` to `W` (via the `elif`) *and* subtracts
+//!    from the score. Undocumented "forgiveness" knob, or a bug — the
+//!    reference does not say.
+//!
+//! Whether to diverge "logically" on any of these is an open decision (see
+//! ticket #70); for now the port mirrors the reference.
 
 use std::collections::{HashMap, HashSet};
 
