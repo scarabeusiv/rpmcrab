@@ -56,6 +56,44 @@ impl AppDataCheck {
         }
     }
 
+    /// True if the text contains an undefined XML entity reference.
+    ///
+    /// The reference falls back to `ElementTree.parse`, which rejects
+    /// undefined entities (`&foo;`). Only the five predefined entities
+    /// (`lt`, `gt`, `amp`, `apos`, `quot`) and numeric character references
+    /// (`&#65;`, `&#x41;`) are valid.
+    fn has_undefined_entity(text: &str) -> bool {
+        let chars: Vec<char> = text.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] != '&' {
+                i += 1;
+                continue;
+            }
+            let start = i + 1;
+            let mut end = start;
+            while end < chars.len() && chars[end] != ';' && chars[end] != '&' {
+                end += 1;
+            }
+            if end >= chars.len() || chars[end] != ';' {
+                return true; // unterminated `&`
+            }
+            let entity: String = chars[start..end].iter().collect();
+            let valid = matches!(entity.as_str(), "lt" | "gt" | "amp" | "apos" | "quot")
+                || entity.strip_prefix('#').is_some_and(|num| {
+                    num.chars().all(|c| c.is_ascii_digit())
+                        || num
+                            .strip_prefix('x')
+                            .is_some_and(|hex| hex.chars().all(|c| c.is_ascii_hexdigit()))
+                });
+            if !valid {
+                return true;
+            }
+            i = end + 1;
+        }
+        false
+    }
+
     /// Minimal XML well-formedness check: balanced tags, single root.
     /// Only used when `appstream-util` is unavailable.
     fn is_well_formed_xml(text: &str) -> bool {
@@ -66,9 +104,14 @@ impl AppDataCheck {
         let mut root_seen = false;
 
         while i < n {
-            // Find next '<'
+            // Find next '<', checking text content for undefined entities.
+            let text_start = i;
             while i < n && chars[i] != '<' {
                 i += 1;
+            }
+            let text: String = chars[text_start..i].iter().collect();
+            if Self::has_undefined_entity(&text) {
+                return false;
             }
             if i >= n {
                 break;
@@ -115,17 +158,25 @@ impl AppDataCheck {
                 return false;
             }
 
-            // Skip attributes, watching for '/>'
+            // Skip attributes, watching for '/>'. Attribute values are
+            // checked for undefined entities (the reference's ElementTree
+            // rejects them).
             let mut self_closing = false;
             let mut in_quote: Option<char> = None;
+            let mut attr_start = 0;
             while i < n && chars[i] != '>' {
                 let ch = chars[i];
                 if let Some(q) = in_quote {
                     if ch == q {
+                        let value: String = chars[attr_start..i].iter().collect();
+                        if Self::has_undefined_entity(&value) {
+                            return false;
+                        }
                         in_quote = None;
                     }
                 } else if ch == '"' || ch == '\'' {
                     in_quote = Some(ch);
+                    attr_start = i + 1;
                 } else if ch == '/' && i + 1 < n && chars[i + 1] == '>' {
                     self_closing = true;
                 }
@@ -238,6 +289,29 @@ mod tests {
     #[test]
     fn two_roots_fail() {
         assert!(!AppDataCheck::is_well_formed_xml("<a/><b/>"));
+    }
+
+    #[test]
+    fn undefined_entity_in_text_fails() {
+        // The reference falls back to ElementTree.parse, which rejects
+        // undefined entities.
+        assert!(!AppDataCheck::is_well_formed_xml(
+            "<component><name>Foo &bar;</name></component>"
+        ));
+    }
+
+    #[test]
+    fn undefined_entity_in_attribute_fails() {
+        assert!(!AppDataCheck::is_well_formed_xml(
+            r#"<component><name lang="&foo;">Foo</name></component>"#
+        ));
+    }
+
+    #[test]
+    fn predefined_and_numeric_entities_pass() {
+        assert!(AppDataCheck::is_well_formed_xml(
+            "<component><name>Foo &lt;&amp;&#65;&#x41;</name></component>"
+        ));
     }
 
     #[test]
