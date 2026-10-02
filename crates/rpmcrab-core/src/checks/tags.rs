@@ -1021,7 +1021,7 @@ impl TagsCheck {
         }
         let times = crate::pkg::tags::int32_array(header, Tag::CHANGELOGTIME);
         if let Some(&first) = times.first() {
-            let mut clt_time = first as i64 - 26 * 3600;
+            let clt_time = first as i64 - 26 * 3600;
             if clt_time < OLDEST_CHANGELOG_TIMESTAMP {
                 add_info(
                     out,
@@ -1031,7 +1031,6 @@ impl TagsCheck {
                     &[&format_date(clt_time)],
                 );
             } else {
-                clt_time = first as i64;
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs() as i64)
