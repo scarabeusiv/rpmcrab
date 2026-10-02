@@ -314,6 +314,13 @@ since = "0.1.0"
 
 [[divergence]]
 case = "global"
+check = "polkit-untracked-privilege"
+kind = "behaviour"
+reason = "Deliberate fix of a reference bug (PolkitCheck.py: check_action does `action.getElementsByTagName('defaults')[0]`, which raises IndexError -- not the caught KeyError -- when <defaults> is absent, crashing the check). The port treats the missing settings as `no` per the polkit default and reports polkit-untracked-privilege instead of crashing."
+since = "0.1.0"
+
+[[divergence]]
+case = "global"
 check = "AtomicUpdateCheck"
 kind = "behaviour"
 reason = "A non-string element in AtomicAllowedDirs/AtomicDisallowedSubdirs (e.g. AtomicDisallowedSubdirs = [42]) panics at construction; the reference raises TypeError later, at check time. The port deliberately fails fast on a misconfigured type instead of reproducing the reference's deferred failure."
