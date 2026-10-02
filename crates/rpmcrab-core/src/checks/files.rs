@@ -3115,8 +3115,9 @@ mod tests {
             results
                 .iter()
                 .any(|(n, d)| n == "library-without-ldconfig-postin"
+                    && d.contains(": E: library-without-ldconfig-postin")
                     && d.contains("libfoo.so.1.2.3")),
-            "missing finding on real .so: {results:?}"
+            "missing E-level finding on real .so: {results:?}"
         );
     }
 
@@ -3174,10 +3175,10 @@ mod tests {
             "false positive on ghost: {results:?}"
         );
         assert!(
-            results
-                .iter()
-                .any(|(n, d)| n == "zero-length" && d.contains("empty-script")),
-            "missing zero-length on empty-script: {results:?}"
+            results.iter().any(|(n, d)| n == "zero-length"
+                && d.contains(": E: zero-length")
+                && d.contains("empty-script")),
+            "missing E-level zero-length on empty-script: {results:?}"
         );
     }
 }
