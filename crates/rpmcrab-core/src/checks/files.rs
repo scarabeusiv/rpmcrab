@@ -3079,8 +3079,8 @@ mod tests {
         // emit the finding, while a real .so file without ldconfig MUST.
         let config = test_config();
         let rpm = fixture_path("fcprobe-1-1.noarch.rpm");
-        let dir = tempfile::TempDir::new().expect("tmpdir");
-        let mut pkg = Pkg::open(std::path::Path::new(&rpm), dir.path()).expect("open fixture");
+        // Header only, no extraction: `files` is overwritten wholesale below.
+        let mut pkg = Pkg::open_no_extract(std::path::Path::new(&rpm)).expect("open fixture");
         pkg.files = vec![
             PkgFile {
                 name: "/usr/lib64/libfoo.so-gdb.py".to_string(),
@@ -3126,8 +3126,8 @@ mod tests {
         // ghost files were not skipped. The reference exempts both.
         let config = test_config();
         let rpm = fixture_path("fcprobe-1-1.noarch.rpm");
-        let dir = tempfile::TempDir::new().expect("tmpdir");
-        let mut pkg = Pkg::open(std::path::Path::new(&rpm), dir.path()).expect("open fixture");
+        // Header only, no extraction: `files` is overwritten wholesale below.
+        let mut pkg = Pkg::open_no_extract(std::path::Path::new(&rpm)).expect("open fixture");
         pkg.files = vec![
             PkgFile {
                 name: "/usr/lib/python3.12/site-packages/foo/__init__.py".to_string(),
