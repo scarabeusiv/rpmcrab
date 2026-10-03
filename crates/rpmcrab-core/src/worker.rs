@@ -109,6 +109,14 @@ impl<'a> Worker<'a> {
         Pkg::installed(header)
     }
 
+    /// Whether the extractor child's stderr is discarded: the
+    /// `SuppressExtractionStderr` config key says so (rpmlint#1592), or the
+    /// run is not verbose. Extracted so tests pin that production code
+    /// reads the config key rather than hardcoding the decision.
+    fn suppress_stderr(&self) -> bool {
+        self.config.suppress_extraction_stderr || !self.config.info
+    }
+
     fn fresh_filter(&self) -> Filter {
         // The main filter already validated the patterns at startup, so this
         // cannot fail on the same configuration.
@@ -145,7 +153,7 @@ impl<'a> Worker<'a> {
                         }
                     }
                 } else {
-                    match Pkg::open(&path, &self.extract_dir) {
+                    match Pkg::open(&path, &self.extract_dir, self.suppress_stderr()) {
                         Ok(pkg) => {
                             let name = pkg.name.clone();
                             let arch = (!pkg.arch.is_empty()).then(|| pkg.arch.clone());
@@ -342,6 +350,30 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
+
+    /// Production code must READ `SuppressExtractionStderr`: the worker's
+    /// stderr decision follows the config key, not a hardcoded value.
+    /// (suppress_config, verbose_info) -> suppress.
+    #[test]
+    fn suppress_stderr_reads_config() {
+        let color = Color::for_tty(false);
+        for (suppress_config, info, expected) in [
+            (false, false, true), // not verbose: always suppressed
+            (false, true, false), // verbose, config off: inherited
+            (true, false, true),  // config on, not verbose: suppressed
+            (true, true, true),   // config on, verbose: suppressed
+        ] {
+            let mut config = Config::default();
+            config.suppress_extraction_stderr = suppress_config;
+            config.info = info;
+            let worker = Worker::new(&config, vec![], color);
+            assert_eq!(
+                worker.suppress_stderr(),
+                expected,
+                "suppress_config={suppress_config} info={info}"
+            );
+        }
+    }
 
     /// A check that sleeps, so wall-clock time proves overlap.
     struct Sleeps;

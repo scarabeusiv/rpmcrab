@@ -383,3 +383,59 @@ fn fatal_package_does_not_stop_the_run() {
         "healthy package still checked: {stdout}"
     );
 }
+
+/// The permissive expression (`lib.rs:173`):
+/// `cfg.permissive = cli.permissive || (!cli.strict && cfg.permissive_by_default)`.
+/// The parity RPM has 2 errors; the builtin defaults are permissive.
+
+#[test]
+fn strict_flag_disables_permissive_default() {
+    // `-s` with errors -> exit 64 (not permissive).
+    let out = rpmcrab(&[
+        "-s",
+        "../../tests/parity/cases/parity/input/parity-1.0-1.noarch.rpm",
+    ]);
+    assert_eq!(out.status.code(), Some(64));
+}
+
+#[test]
+fn permissive_flag_explicit() {
+    // `-P` with errors -> exit 0 (permissive).
+    let out = rpmcrab(&[
+        "-P",
+        "../../tests/parity/cases/parity/input/parity-1.0-1.noarch.rpm",
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+}
+
+#[test]
+fn permissive_by_default_false_in_config() {
+    // Config with `PermissiveByDefault = false` -> exit 64.
+    let dir = std::env::temp_dir().join("rpmcrab-permissive-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join("test.toml");
+    std::fs::write(&cfg, "PermissiveByDefault = false\n").unwrap();
+    let out = rpmcrab(&[
+        "-c",
+        cfg.to_str().unwrap(),
+        "../../tests/parity/cases/parity/input/parity-1.0-1.noarch.rpm",
+    ]);
+    assert_eq!(out.status.code(), Some(64));
+}
+
+#[test]
+fn permissive_by_default_string_true_exits_zero() {
+    // `PermissiveByDefault = "true"` (string) is truthy in the reference
+    // (`if configuration[key]:`, rpmlint#1592), so the run is permissive
+    // and exits 0 despite the findings.
+    let dir = std::env::temp_dir().join("rpmcrab-permissive-test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join("test-str.toml");
+    std::fs::write(&cfg, "PermissiveByDefault = \"true\"\n").unwrap();
+    let out = rpmcrab(&[
+        "-c",
+        cfg.to_str().unwrap(),
+        "../../tests/parity/cases/parity/input/parity-1.0-1.noarch.rpm",
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+}

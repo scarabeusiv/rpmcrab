@@ -63,16 +63,37 @@ pub struct Config {
     /// `"slfo"`. Derived from the `Flavor` TOML key by [`Config::finalize`];
     /// unknown values warn on stderr and fall back to `"opensuse"`.
     pub flavor: String,
+    /// `PermissiveByDefault` (rpmlint#1592).
+    pub permissive_by_default: bool,
+    /// `SkipPackagePatterns` (rpmlint#1592).
+    pub skip_package_patterns: Vec<String>,
+    /// `RpmlintrcSearchPaths` (rpmlint#1592).
+    pub rpmlintrc_search_paths: Vec<String>,
+    /// `SuppressExtractionStderr` (rpmlint#1592).
+    pub suppress_extraction_stderr: bool,
+}
+
+/// Human-readable TOML value kind for configuration diagnostics.
+fn value_kind(v: &toml::Value) -> &'static str {
+    match v {
+        toml::Value::String(_) => "a string",
+        toml::Value::Integer(_) => "an integer",
+        toml::Value::Float(_) => "a float",
+        toml::Value::Boolean(_) => "a boolean",
+        toml::Value::Datetime(_) => "a datetime",
+        toml::Value::Array(_) => "an array",
+        toml::Value::Table(_) => "a table",
+    }
 }
 
 impl Config {
     /// Derive the typed hot-path fields from `configuration`. Called after
     /// every load step (initial merge, rpmlintrc).
-    pub fn finalize(&mut self) {
-        self.checks = self.get_strings("Checks");
-        self.filters = self.get_strings("Filters");
-        self.filter_titles = self.get_strings("FilterErrorTitles");
-        self.blocked_filters = self.get_strings("BlockedFilters");
+    pub fn finalize(&mut self) -> Result<(), String> {
+        self.checks = self.get_strings("Checks")?;
+        self.filters = self.get_strings("Filters")?;
+        self.filter_titles = self.get_strings("FilterErrorTitles")?;
+        self.blocked_filters = self.get_strings("BlockedFilters")?;
         self.badness_threshold = self
             .configuration
             .get("BadnessThreshold")
@@ -99,6 +120,11 @@ impl Config {
                 "opensuse".to_string()
             }
         };
+        self.permissive_by_default = self.get_bool("PermissiveByDefault");
+        self.skip_package_patterns = self.get_strings("SkipPackagePatterns")?;
+        self.rpmlintrc_search_paths = self.get_strings("RpmlintrcSearchPaths")?;
+        self.suppress_extraction_stderr = self.get_bool("SuppressExtractionStderr");
+        Ok(())
     }
 
     /// True when the `slfo` flavor is selected (`docs/flavor-implementation.md`).
@@ -130,17 +156,50 @@ impl Config {
         }
     }
 
-    /// Read a top-level key as a list of strings (empty if absent/not a list).
-    fn get_strings(&self, key: &str) -> Vec<String> {
-        self.configuration
-            .get(key)
-            .and_then(toml::Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default()
+    /// Read a top-level key as a bool, using Python truthiness to match the
+    /// reference (`if configuration[key]:` in `lint.py`, rpmlint#1592).
+    ///
+    /// Absent is false. Every TOML value maps via Python's `bool()`:
+    /// booleans pass through; non-empty strings, non-zero numbers, and
+    /// non-empty arrays/tables are true. Note the reference's footgun is
+    /// preserved: the string `"false"` is true, as in Python.
+    fn get_bool(&self, key: &str) -> bool {
+        match self.configuration.get(key) {
+            None => false,
+            Some(toml::Value::Boolean(b)) => *b,
+            Some(toml::Value::String(s)) => !s.is_empty(),
+            Some(toml::Value::Integer(i)) => *i != 0,
+            Some(toml::Value::Float(f)) => *f != 0.0,
+            Some(toml::Value::Array(a)) => !a.is_empty(),
+            Some(toml::Value::Table(t)) => !t.is_empty(),
+            Some(toml::Value::Datetime(_)) => true,
+        }
+    }
+
+    /// Read a top-level key as a list of strings (empty if absent).
+    ///
+    /// # Errors
+    /// Returns a diagnostic if the key is present but not a list of strings.
+    /// Only reachable from a `*.override.*` file: on the normal and XDG paths
+    /// merge_into has already appended the scalar's CHARACTERS to the list
+    /// (config.py:109-112 iterates a string by character), so this sees an
+    /// Array.
+    fn get_strings(&self, key: &str) -> Result<Vec<String>, String> {
+        match self.configuration.get(key) {
+            None => Ok(Vec::new()),
+            Some(toml::Value::Array(items)) => items
+                .iter()
+                .map(|v| {
+                    v.as_str()
+                        .map(str::to_string)
+                        .ok_or_else(|| format!("'{key}' must be a list of strings"))
+                })
+                .collect(),
+            Some(other) => Err(format!(
+                "'{key}' must be a list of strings, found {}",
+                value_kind(other)
+            )),
+        }
     }
 }
 
@@ -276,6 +335,13 @@ fn glob_toml(dir: &Path, star_glob: bool, sort: bool) -> Vec<PathBuf> {
 /// Autoloading of XDG dirs is skipped when `CONFIG_DISABLE_AUTOLOADING` or
 /// `PYTEST_XDIST_TESTRUNUID` is set. An unparsable TOML file exits 4, as
 /// rpmlint does.
+/// Load only the bundled defaults, skipping XDG autoloading and the
+/// environment gates. For tests that must pin the shipped default values
+/// without depending on the ambient environment.
+pub fn load_bundled() -> Config {
+    load_inner(&[], &[], false)
+}
+
 pub fn load(extra: &[PathBuf]) -> Config {
     let autoload = std::env::var("PYTEST_XDIST_TESTRUNUID").is_err()
         && std::env::var("CONFIG_DISABLE_AUTOLOADING").is_err();
@@ -351,7 +417,10 @@ fn load_inner(extra: &[PathBuf], xdg_dirs: &[PathBuf], autoload: bool) -> Config
         cfg.conf_files.push(display.clone());
     }
 
-    cfg.finalize();
+    if let Err(e) = cfg.finalize() {
+        eprintln!("(none): E: fatal error in configuration: {e}");
+        std::process::exit(1);
+    }
     cfg
 }
 
@@ -405,7 +474,9 @@ pub fn load_rpmlintrc(config: &mut Config, path: &Path) -> std::io::Result<()> {
     }
 
     // self.configuration['Filters'] += filters
-    let mut all = config.get_strings("Filters");
+    let mut all = config
+        .get_strings("Filters")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     all.extend(filters.iter().cloned());
     config.configuration.insert(
         "Filters".to_string(),
@@ -417,8 +488,53 @@ pub fn load_rpmlintrc(config: &mut Config, path: &Path) -> std::io::Result<()> {
     );
     config.rpmlintrc_filters = filters;
     config.rpmlintrc_display.push(path.display().to_string());
-    config.finalize();
+    config
+        .finalize()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     Ok(())
+}
+
+/// Compiled `SkipPackagePatterns` (rpmlint#1592: `re.compile` per pattern,
+/// `search` per path). Built once per run; the reference compiles with a bare
+/// `re.compile`, so a bad pattern is a fatal configuration error here too.
+pub struct SkipPatterns(Vec<Regex>);
+
+impl SkipPatterns {
+    /// Compile the configured patterns.
+    ///
+    /// # Errors
+    /// Returns a diagnostic if a pattern does not compile, or if it is
+    /// empty: an empty pattern matches every path, which would silently turn
+    /// the run into a no-op that prints the skip message and exits 0.
+    pub fn new(config: &Config) -> Result<Self, String> {
+        config
+            .skip_package_patterns
+            .iter()
+            .map(|p| {
+                if p.is_empty() {
+                    Err("empty pattern matches every path".to_string())
+                } else {
+                    Regex::new(p).map_err(|e| e.to_string())
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Self)
+    }
+
+    /// Whether any pattern searches a match in `path` (`re.search` is
+    /// unanchored; `\d` is Unicode-aware, as in Python).
+    ///
+    /// # Errors
+    /// Propagates the regex engine error instead of silently treating it as
+    /// "no match": a backtrack-limit hit must not quietly un-skip a package.
+    pub fn matches(&self, path: &str) -> Result<bool, fancy_regex::Error> {
+        for re in &self.0 {
+            if re.find(path)?.is_some() {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
 }
 
 #[cfg(test)]
@@ -548,6 +664,122 @@ mod tests {
     fn sort_key_orders_defaults_normal_override() {
         assert!(sort_key(true, "configdefaults.toml") < sort_key(false, "opensuse.toml"));
         assert!(sort_key(false, "opensuse.toml") < sort_key(false, "scoring-strict.override.toml"));
+    }
+
+    /// The rpmlint#1592 keys ship in the bundled defaults with the openSUSE
+    /// flavour values (rpmcrab's defaults are the openSUSE flavour).
+    /// A scalar reaching a list key fails loudly rather than silently disabling
+    /// the key. Only a `*.override.*` file can produce this state -- it inserts
+    /// into `configuration` directly, bypassing the character-shred that
+    /// merge_into applies on the normal and XDG paths (see the ledger entry for
+    /// `config`). The on-disk path it models is covered by the `-c
+    /// *.override.toml` case in the CLI tests.
+    #[test]
+    fn finalize_rejects_a_scalar_where_a_list_is_expected() {
+        let mut cfg = Config::default();
+        cfg.configuration.insert(
+            "SkipPackagePatterns".to_string(),
+            toml::Value::String("/etc".to_string()),
+        );
+        let err = cfg.finalize().expect_err("scalar list key must fail");
+        assert!(err.contains("SkipPackagePatterns"), "got {err}");
+    }
+
+    #[test]
+    fn finalize_rejects_a_non_string_list_item() {
+        let mut cfg = Config::default();
+        cfg.configuration.insert(
+            "Checks".to_string(),
+            toml::Value::Array(vec![toml::Value::Integer(1)]),
+        );
+        let err = cfg.finalize().expect_err("non-string item must fail");
+        assert!(err.contains("Checks"), "got {err}");
+    }
+
+    #[test]
+    fn finalize_string_true_is_true() {
+        // `PermissiveByDefault = "true"` (a string) is truthy in the
+        // reference (`if configuration[key]:`), so it must enable
+        // permissive mode (exit 0), not error or silently become false.
+        let mut cfg = Config::default();
+        cfg.configuration.insert(
+            "PermissiveByDefault".to_string(),
+            toml::Value::String("true".to_string()),
+        );
+        cfg.finalize().expect("string 'true' must finalize");
+        assert!(cfg.permissive_by_default);
+    }
+
+    #[test]
+    fn finalize_string_false_is_true_python_truthiness() {
+        // Python truthiness: any non-empty string is true, including
+        // `"false"`. The reference does `if configuration[key]:`, so the
+        // port matches it exactly rather than second-guessing.
+        let mut cfg = Config::default();
+        cfg.configuration.insert(
+            "PermissiveByDefault".to_string(),
+            toml::Value::String("false".to_string()),
+        );
+        cfg.finalize().expect("string 'false' must finalize");
+        assert!(cfg.permissive_by_default);
+    }
+
+    #[test]
+    fn get_bool_python_truthiness_matrix() {
+        let mut cfg = Config::default();
+        let cases: &[(&str, toml::Value, bool)] = &[
+            ("bool-true", toml::Value::Boolean(true), true),
+            ("bool-false", toml::Value::Boolean(false), false),
+            ("str-true", toml::Value::String("true".into()), true),
+            ("str-false", toml::Value::String("false".into()), true),
+            ("str-empty", toml::Value::String("".into()), false),
+            ("int-1", toml::Value::Integer(1), true),
+            ("int-0", toml::Value::Integer(0), false),
+            ("float-1.5", toml::Value::Float(1.5), true),
+            ("float-0", toml::Value::Float(0.0), false),
+            (
+                "array-nonempty",
+                toml::Value::Array(vec![toml::Value::Integer(1)]),
+                true,
+            ),
+            ("array-empty", toml::Value::Array(vec![]), false),
+        ];
+        for (name, value, expected) in cases {
+            cfg.configuration.insert("K".to_string(), value.clone());
+            assert_eq!(cfg.get_bool("K"), *expected, "case {name}");
+        }
+    }
+
+    #[test]
+    fn get_bool_absent_is_false() {
+        let cfg = Config::default();
+        assert!(!cfg.get_bool("Missing"));
+    }
+
+    #[test]
+    fn get_bool_true_is_true() {
+        let mut cfg = Config::default();
+        cfg.configuration
+            .insert("K".to_string(), toml::Value::Boolean(true));
+        assert!(cfg.get_bool("K"));
+    }
+
+    #[test]
+    fn bundled_defaults_carry_the_suse_ism_keys() {
+        let cfg = load_inner(&[], &[], false);
+        assert!(cfg.permissive_by_default);
+        assert_eq!(
+            cfg.skip_package_patterns,
+            vec![r"/home/abuild/rpmbuild/RPMS/noarch/rpmlint-\d".to_string()]
+        );
+        assert_eq!(
+            cfg.rpmlintrc_search_paths,
+            vec![
+                "/home/abuild/rpmbuild/SOURCES".to_string(),
+                "/usr/src/packages/SOURCES/".to_string(),
+            ]
+        );
+        assert!(cfg.suppress_extraction_stderr);
     }
 
     #[test]
