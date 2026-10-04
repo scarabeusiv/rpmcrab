@@ -1466,6 +1466,26 @@ mod tests {
     }
 
     #[test]
+    fn shipped_release_extension_wiring_goes_through_config() {
+        // plusky/rpmcrab#176 nit: the Config -> ReleaseExtension ->
+        // extension_regex path that the shipped catalog depends on was only
+        // exercised by the CLI runs. Pin it here through the real Config
+        // loading path instead of the raw-TOML test helper.
+        let config = crate::config::load_bundled();
+        let check = TagsCheck::new(&config);
+        let re = check
+            .extension_regex
+            .expect("shipped ReleaseExtension default builds a regex");
+        // A known distro suffix strips...
+        assert_eq!(re.replace_all("1.15.1-3.fc42", "").as_ref(), "1.15.1-3");
+        // ...an unknown one does not.
+        assert_eq!(
+            re.replace_all("1.15.1-3.weird9", "").as_ref(),
+            "1.15.1-3.weird9"
+        );
+    }
+
+    #[test]
     fn tags_check_runs_on_fixture() {
         let pkg = fixture_pkg("fcprobe-1-1.noarch.rpm");
         let results = run_check(&pkg);
