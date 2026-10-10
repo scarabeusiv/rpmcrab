@@ -81,6 +81,52 @@ digester = "xml"
 hash = "610b7e9a59c724100f907184dbf009846ebbd22b40326675a1bad481c685776d"
 
 [[FileDigestGroup]]
+packages = ["systemd", "systemd-mini"]
+type = "dbus"
+note = "imported from rpmlint1 DBUSServices.WhiteList"
+bugs = ["bsc#641924", "bsc#1257388", "bsc#1281962"]
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system-services/org.freedesktop.systemd1.service"
+digester = "shell"
+hash = "78e857a4bab8d98b5c2b51532721da8468e69a19ed39cb05bbbfcfa0e6b5482c"
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system.d/org.freedesktop.systemd1.conf"
+digester = "xml"
+hash = "9bba9ecd7af3cff60bf49cc49ea9e94df480319e1b128217e7c871c62e019f8e"
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system-services/org.freedesktop.hostname1.service"
+digester = "shell"
+hash = "4a71245aee9271bd799986068fc10dcf8ce947e9d805f9d36d78afc98d89f9ff"
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system.d/org.freedesktop.hostname1.conf"
+digester = "xml"
+hash = "0f7acce75537038da343267ce42b3d3e149acf5ace347c9c1e1283c058a6856d"
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system.d/org.freedesktop.login1.conf"
+digester = "xml"
+hash = "696228908a84b847c7d87ec6edd59f28e883e5ddb26e2aba0bc80f7b22692eea"
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system-services/org.freedesktop.login1.service"
+digester = "shell"
+hash = "7f767528b2429c4808cfe59ffade85b273a9dc7ce7bbf95da0944d0bd8b8cbe0"
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system.d/org.freedesktop.timedate1.conf"
+digester = "xml"
+hash = "aa1cf5b246c699689f042b213b216287531c88dd1eb439899049d18ae17bdecc"
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system-services/org.freedesktop.timedate1.service"
+digester = "shell"
+hash = "fc8a347caf22417b9d322b46667d41005789fa3b143babf26dfc19ff242401cd"
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system.d/org.freedesktop.locale1.conf"
+digester = "xml"
+hash = "1b6b560ca97885664082bc0692557ff9ac31a1042120d35bfa4cca691c00bbf3"
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system-services/org.freedesktop.locale1.service"
+digester = "shell"
+hash = "7efe10e36cb88260293fc66232b5a8de7b9bcf38d8af40159604b60ee218c396"
+
+[[FileDigestGroup]]
 package = "system-config-printer-applet"
 type = "dbus"
 note = "graphical CUPS applet for managing printer queue etc."
