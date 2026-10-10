@@ -2639,7 +2639,13 @@ impl FilesCheck {
                     || is_match(&self.compr_re, fname)
                     || is_match(&self.includefile_re, fname)
                     || is_match(&self.develfile_re, fname)
-                    || fname.starts_with("/etc/logrotate.d/");
+                    || fname.starts_with("/etc/logrotate.d/")
+                    // Data file with spurious executable bit: no shebang,
+                    // not an ELF binary, and not in a script path (those
+                    // keep script-without-shebang).
+                    || (fd.interpreter.is_none()
+                        && !pkgfile.magic.starts_with("ELF")
+                        && !is_match(&self.script_re, fname));
             }
             if fd.nonexec_file {
                 add_info(
@@ -3319,6 +3325,50 @@ mod tests {
         assert_has(&names, "dir-or-file-in-opt");
         // no read errors: extraction works
         assert_lacks(&names, "read-error");
+    }
+
+    #[test]
+    fn spurious_executable_perm_fires_for_data_file() {
+        // Data file with executable bit but no shebang: not a script,
+        // not an ELF binary, not in a script path -> spurious-executable-perm.
+        let rpm = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/parity/pkg/inputs/fcprobe-1-1.noarch.rpm");
+        let mut pkg = Pkg::open_no_extract(&rpm).expect("open fixture pkg");
+        pkg.files = vec![PkgFile {
+            name: "/usr/share/themes/foo/index.theme".to_string(),
+            path: "/usr/share/themes/foo/index.theme".to_string(),
+            mode: 0o100755,
+            magic: "ASCII text".to_string(),
+            ..Default::default()
+        }];
+        let config = test_config();
+        let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
+        let mut check = FilesCheck::new(&config);
+        check.check(&pkg, &config, &mut out);
+        let names: Vec<String> = out.results().iter().map(|(n, _)| n.clone()).collect();
+        assert_has(&names, "spurious-executable-perm");
+        assert_lacks(&names, "script-without-shebang");
+    }
+
+    #[test]
+    fn spurious_executable_perm_silent_for_elf() {
+        // ELF binaries are executable by design: no spurious-executable-perm.
+        let rpm = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/parity/pkg/inputs/fcprobe-1-1.noarch.rpm");
+        let mut pkg = Pkg::open_no_extract(&rpm).expect("open fixture pkg");
+        pkg.files = vec![PkgFile {
+            name: "/usr/bin/foo".to_string(),
+            path: "/usr/bin/foo".to_string(),
+            mode: 0o100755,
+            magic: "ELF 64-bit LSB executable".to_string(),
+            ..Default::default()
+        }];
+        let config = test_config();
+        let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
+        let mut check = FilesCheck::new(&config);
+        check.check(&pkg, &config, &mut out);
+        let names: Vec<String> = out.results().iter().map(|(n, _)| n.clone()).collect();
+        assert_lacks(&names, "spurious-executable-perm");
     }
 
     #[test]
