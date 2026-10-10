@@ -101,7 +101,7 @@
 #   whitelist: dropped [[FileDigestGroup]] stanza for 'rpmlint-integration-test' (rpmlint’s own synthetic integration-test package; not real distro policy, not shipped in Factory or Leap)
 #   whitelist: dropped [[FileDigestGroup]] stanza for 'rpmlint-integration-test' (rpmlint’s own synthetic integration-test package; not real distro policy, not shipped in Factory or Leap)
 #   whitelist: dropped [[FileDigestGroup]] stanza for 'lxd' (removed from Factory after the Canonical license change (replaced by incus); still in SLE 16, kept there)
-#   whitelist: dropped [[FileDigestGroup]] stanza for 'soapy-remote-server' (not shipped in Leap 16.0)
+#   whitelist: KEPT [[FileDigestGroup]] stanza for soapy-remote-server — package present in the flavor's distro, needs a fresh audit before any allowance is trusted
 #   whitelist: dropped [[FileDigestGroup]] stanza for 'foomuuri' (removed from Factory (bsc#1254385))
 #   whitelist: dropped [[SystemdTmpfilesWhitelist]] stanza for 'rpmlint-integration-test' (rpmlint’s own synthetic integration-test package; not real distro policy, not shipped in Factory or Leap)
 #   whitelist: KEPT [[SystemdTmpfilesWhitelist]] stanza for rubygem-passenger — package present in the flavor's distro, needs a fresh audit before any allowance is trusted
@@ -158,7 +158,7 @@
 #   whitelist: dropped [[FileDigestGroup]] stanza for 'rpmlint-integration-test' (rpmlint’s own synthetic integration-test package; not real distro policy, not shipped in Factory or Leap)
 #   whitelist: dropped [[FileDigestGroup]] stanza for 'rpmlint-integration-test' (rpmlint’s own synthetic integration-test package; not real distro policy, not shipped in Factory or Leap)
 #   whitelist: KEPT [[FileDigestGroup]] stanza for lxd — package present in the flavor's distro, needs a fresh audit before any allowance is trusted
-#   whitelist: dropped [[FileDigestGroup]] stanza for 'soapy-remote-server' (not shipped in Leap 16.0)
+#   whitelist: KEPT [[FileDigestGroup]] stanza for soapy-remote-server — package present in the flavor's distro, needs a fresh audit before any allowance is trusted
 #   whitelist: dropped [[SystemdTmpfilesWhitelist]] stanza for 'rpmlint-integration-test' (rpmlint’s own synthetic integration-test package; not real distro policy, not shipped in Factory or Leap)
 #   whitelist: dropped [[SystemdTmpfilesWhitelist]] stanza for 'rubygem-passenger' (not shipped in Leap 16.0)
 #   whitelist: dropped [[SystemdTmpfilesWhitelist]] stanza for 'parallel-printer-support' (not shipped in Leap 16.0)
