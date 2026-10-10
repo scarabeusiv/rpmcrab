@@ -54,9 +54,9 @@ UPSTREAM_REPO = "rpm-software-management/rpmlint"
 PINS = {
     # flavor: (sha, date, branch, config_subdir)
     "opensuse": (
-        "84848c05c5571c22274a55ff9afdfe6d88c67dc9",
-        "2026-09-28",
-        "main",
+        "041119a7e8d14da8834184084d343eb11d5577fa",
+        "2026-10-09",
+        "opensuse",
     ),
     "slfo": (
         "5c758cf12f9be87e9487bb60b023397f1e97115e",
@@ -664,16 +664,17 @@ def _tw_binary_names():
         with urllib.request.urlopen(_get(TW_OSS_REPOMD_URL), timeout=60) as resp:
             repomd = resp.read().decode("utf-8")
         m = re.search(
-            r'<data type="primary">.*?<location href="([^"]*primary\.xml\.[^"]*)"',
+            r'<data type="primary">.*?<checksum type="sha512">([0-9a-f]+)</checksum>'
+            r'.*?<location href="([^"]*primary\.xml\.[^"]*)"',
             repomd,
             re.DOTALL,
         )
         if not m:
             raise RuntimeError(
-                "primary.xml location not found in Tumbleweed repomd.xml"
+                "primary.xml location/sha512 not found in Tumbleweed repomd.xml"
             )
-        primary_url = (
-            "https://download.opensuse.org/tumbleweed/repo/oss/" + m.group(1)
+        expected_sha512, primary_url = m.group(1), (
+            "https://download.opensuse.org/tumbleweed/repo/oss/" + m.group(2)
         )
         # Keep the download out of TMPDIR, which is a small tmpfs on
         # some build machines.
@@ -681,6 +682,18 @@ def _tw_binary_names():
             with urllib.request.urlopen(_get(primary_url), timeout=600) as resp:
                 shutil.copyfileobj(resp, tmp)
             tmp.flush()
+            # Hash in chunks: the download is ~17 MB, no need to hold it
+            # all in memory. A truncated download must fail loudly, never
+            # silently prune packages absent from the partial data.
+            hasher = hashlib.sha512()
+            with open(tmp.name, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    hasher.update(chunk)
+            actual_sha512 = hasher.hexdigest()
+            if actual_sha512 != expected_sha512:
+                raise RuntimeError(
+                    f"sha512 mismatch on {primary_url} (truncated download?)"
+                )
             proc = subprocess.Popen([zstd, "-dc", tmp.name], stdout=subprocess.PIPE)
             try:
                 names = _scan_binary_names(proc.stdout)
