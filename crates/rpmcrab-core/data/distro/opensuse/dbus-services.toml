@@ -163,16 +163,11 @@ hash     = "8a90ad6824da4bc87d770b552f83212e47b8343afb0dccee828ba3e63b099267"
 [[FileDigestGroup]]
 package = "wpa_supplicant"
 type = "dbus"
-note = "imported from rpmlint1 DBUSServices.WhiteList"
-bugs = ["bsc#681116", "bsc#1200342"]
+note = "legacy: not audited"
 [[FileDigestGroup.digests]]
-path = "/usr/share/dbus-1/system-services/fi.w1.wpa_supplicant1.service"
+path = "/usr/share/dbus-1/system-services/fi.epitest.hostap.WPASupplicant.service"
 digester = "shell"
-hash = "cca1385e218f35305bf4c4f9982b90cf7e1bbe013f0404977b464d2034bcd3ce"
-[[FileDigestGroup.digests]]
-path = "/usr/share/dbus-1/system.d/wpa_supplicant.conf"
-digester = "xml"
-hash = "2986f210d55588e8c556e3b81e9eeee94668ebb2be6024fb68f8a2f4fcae8469"
+hash = "601ce02347339b2fdfde893754f864b0318adf0dd39e352d39068b4b89c6e1d0"
 
 [[FileDigestGroup]]
 package = "wpa_supplicant"
@@ -266,30 +261,25 @@ hash = "0a40412a45af1c17710c82dd800d57f3c9b0a2515bb21fbcebe10065603e5d31"
 [[FileDigestGroup]]
 package = "NetworkManager"
 type = "dbus"
-note = "privilege separation helper that does not provide a public API"
-bug = "bsc#1194799"
+note = "legacy: not audited"
 [[FileDigestGroup.digests]]
-path = "/usr/share/dbus-1/system-services/org.freedesktop.nm_priv_helper.service"
-digester = "shell"
-hash = "77bc536d4f275958c639943415524ef88557e42efe7bdf4f4363fe6284eb1a18"
-[[FileDigestGroup.digests]]
-path = "/usr/share/dbus-1/system.d/nm-priv-helper.conf"
+path = "/usr/share/dbus-1/system.d/nm-dispatcher.conf"
 digester = "xml"
-hash = "7a257ae283efe2d6c592b13e2ab6541b8bc364be7866555700f8f550601f6687"
+hash = "540310497cbfaca7dff478599852c4423b9ae708ef86a1bd489c3f1def41f540"
+[[FileDigestGroup.digests]]
+path = "/usr/share/dbus-1/system-services/org.freedesktop.nm_dispatcher.service"
+digester = "shell"
+hash = "15b426ade96ee8abca53b614cb8837ea7ca4cc0a85cf6fe53f54275835af040a"
 
 [[FileDigestGroup]]
 package = "NetworkManager"
 type = "dbus"
-note = "privilege separation helper that does not provide a public API"
-bug = "bsc#1194799"
+note = "imported from rpmlint1 DBUSServices.WhiteList"
+bug = "bsc#747780"
 [[FileDigestGroup.digests]]
-path = "/usr/share/dbus-1/system-services/org.freedesktop.nm_priv_helper.service"
-digester = "shell"
-hash = "77bc536d4f275958c639943415524ef88557e42efe7bdf4f4363fe6284eb1a18"
-[[FileDigestGroup.digests]]
-path = "/usr/share/dbus-1/system.d/nm-priv-helper.conf"
+path = "/usr/share/dbus-1/system.d/org.freedesktop.NetworkManager.conf"
 digester = "xml"
-hash = "7a257ae283efe2d6c592b13e2ab6541b8bc364be7866555700f8f550601f6687"
+hash = "7e39fec66d71fd41f678eea57f0b566a4347a341f9ced852d0b3215e8b5dd82e"
 
 [[FileDigestGroup]]
 package = "NetworkManager"
