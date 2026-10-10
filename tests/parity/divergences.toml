@@ -1735,3 +1735,10 @@ check = "script-without-shebang"
 kind = "behaviour"
 reason = "The reference flags any executable file lacking a shebang, including non-scripts: data files with wrong permissions (moka-icon-theme index.theme, COPYING), shell fragment templates (kernel scripts/atomic/fallbacks/*), Python modules (idlelib/pyshell.py), and build templates (syclcc-launch.rule.in). rpmcrab only emits script-without-shebang for files in script paths (bin/, sbin/, init.d, cron.*) or otherwise identified as scripts; a non-script file with the executable bit fires spurious-executable-perm instead (extended to data files in #426). The extension is gated on the file being text: the reference early-returns on non-text in the same code path and stays silent there (verified with a 120-control-byte probe), so the port warns nowhere the reference is silent. Badness note: the reference finding carries the default badness 1, while spurious-executable-perm is scored 50 in the openSUSE/SLFO Scoring tables (promoting it to Error) -- the same files now contribute 50x the badness, so packages near the badness abort threshold can newly abort. The reference findings on these 9 packages are false positives under the wrong check name."
 since = "0.1.0"
+
+[[divergence]]
+case = "global"
+check = "explicit-lib-dependency"
+kind = "behaviour"
+reason = "Rich `(libfoo if bar)` / `(libfoo unless bar)` dependencies yield `libfoo` as a leaf (the condition is a predicate, not a requirement, but the then-branch is real), so explicit-lib-dependency fires. The reference applies its anchored `^lib` regex to the whole `\"(libfoo if bar)\"` string, which does not match, so it stays silent. A conditional requirement is still a requirement — the divergence is intentional. Same for devel-dependency with `(foo-devel if bar)`."
+since = "0.1.0"
