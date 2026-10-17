@@ -758,6 +758,14 @@ kind = "behaviour"
 reason = "Emits E: pretrans-not-lua when a %pretrans scriptlet is not written in Lua (upstream rpmlint#396, rationale rpm#714): %pretrans runs before any payload is installed, so only the internal Lua interpreter is guaranteed to exist. The reference 2.10.0 has no such check — #396 is still open upstream — so this is a deliberate fix-in-port, not a parity gap."
 since = "0.1.0"
 upstream = "https://github.com/rpm-software-management/rpmlint/issues/396"
+
+[[divergence]]
+case = "global"
+check = "deprecated-cache-updater-in"
+kind = "behaviour"
+reason = "New port-only Warning: a non-trigger shell scriptlet invoking update-desktop-database, gtk-update-icon-cache, update-mime-database, glib-compile-schemas or install-info at command position emits W deprecated-cache-updater-in-<scriptlet> with the command as detail. The reference has no such finding. Deliberate: since RPM 4.13 file triggers run these updaters when the files they index change (the openSUSE packaging news of 2020-11-23 deprecated the macros expanding to these calls), so a hand-rolled invocation in %pre/%post/%preun/%postun/%pretrans/%posttrans/%verifyscript duplicates the trigger; trigger scriptlets themselves are exempt because an updater there is the trigger mechanism doing its work (desktop-file-utils, shared-mime-info). Warning, not Error: the caches still get built, so the call is redundant rather than damaging. Command-position matching only: comments, echoed text and heredoc bodies stay silent, and a repeated command is reported once. The check fires whatever directory the updater is pointed at: over the Factory spec corpus every direct scriptlet invocation targets the system directories the triggers own (or no directory, i.e. the tool default). Pinned by unit tests in post.rs."
+since = "0.3.0"
+upstream = "https://github.com/plusky/rpmcrab/issues/638"
 [[divergence]]
 case = "global"
 check = "PolkitCheck"
