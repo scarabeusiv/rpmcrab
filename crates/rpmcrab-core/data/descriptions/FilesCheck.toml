@@ -408,3 +408,11 @@ The symlink contains more `..` segments than the path depth allows. The symlink 
 symlink-should-be-absolute="""
 The symlink uses a relative target where an absolute one is required.
 """
+sysconfig-fillup-usage="""
+The package uses the legacy sysconfig/fillup configuration scheme: it ships
+a file below /etc/sysconfig or a fillup template, calls fillup from a
+scriptlet, or points a systemd unit's EnvironmentFile into /etc/sysconfig.
+Migrate to daemon-native configuration, or to systemd drop-ins and an
+EnvironmentFile pointing at a package-owned path, instead of configuration
+merged into /etc/sysconfig by fillup.
+"""
