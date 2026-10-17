@@ -27,3 +27,9 @@ versioned package names exist so that several SONAME generations can be
 installed in parallel; obsoleting one generation breaks that. Remove the
 obsoletes so both generations can be installed together.
 """
+shlib-devel-unversioned-requires="""
+Your library -devel package does not require the shared library package with a
+version constraint. The Shared Library Policy asks for a properly versioned
+requires on the shared library package, so that installing the -devel package
+cannot pull in a library generation it was not built against.
+"""
