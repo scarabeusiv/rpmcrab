@@ -308,6 +308,7 @@ setuid-binary = E
 setup-not-in-prep = W
 shared-dir-glob-in-files = W
 shared-library-without-dependency-information = E
+shlib-devel-unversioned-requires = W
 shlib-fixed-dependency = W
 shlib-policy-excessive-dependency = E
 shlib-policy-missing-lib = E
