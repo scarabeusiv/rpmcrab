@@ -26,16 +26,18 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use sequoia_openpgp as openpgp;
-use openpgp::cert::{CertParser, KeyAmalgamation};
+use openpgp::cert::CertParser;
 use openpgp::packet::prelude::*;
 use openpgp::parse::stream::{
-    DetachedVerifierBuilder, MessageLayer, MessageStructure, VerificationHelper,
-    VerificationLayer, VerificationResult,
+    DetachedVerifierBuilder, MessageLayer, MessageStructure, VerificationError,
+    VerificationHelper,
 };
-use openpgp::parse::{PacketParser, Parse};
-use openpgp::policy::{NullPolicy, Policy, StandardPolicy};
-use openpgp::types::KeyFlags;
-use openpgp::{Cert, KeyHandle};
+use openpgp::parse::Parse;
+use openpgp::cert::prelude::ValidErasedKeyAmalgamation;
+use openpgp::packet::key::PublicParts;
+use openpgp::policy::{HashAlgoSecurity, NullPolicy, Policy, StandardPolicy};
+use openpgp::types::{AEADAlgorithm, HashAlgorithm, SymmetricAlgorithm};
+use openpgp::{Cert, KeyHandle, PacketPile};
 
 // ---------- RPM container slicing (adapted from #730's signature.rs) --
 
@@ -322,84 +324,119 @@ fn hex(bytes: &[u8]) -> String {
 /// area first (issuer subpacket wins over issuer-fingerprint within an
 /// area), then the hashed area; version 3 packets carry it in the body.
 fn seq_issuer(sig: &Signature) -> Option<[u8; 8]> {
-    fn area_issuer(area: &openpgp::packet::signature::subpacket::SubpacketArea)
-        -> Option<[u8; 8]>
-    {
-        use openpgp::packet::signature::subpacket::{
-            SubpacketTag, SubpacketValue,
-        };
+    fn area_issuer(
+        area: &openpgp::packet::signature::subpacket::SubpacketArea,
+    ) -> Option<[u8; 8]> {
+        use openpgp::packet::signature::subpacket::SubpacketValue;
         let mut issuer = None;
         let mut from_fingerprint = None;
-        for sub in area.iter(SubpacketTag::Issuer) {
-            if issuer.is_none() {
-                if let SubpacketValue::Issuer(key_id) = sub.value() {
-                    issuer = Some(key_id.as_slice().try_into().ok()?);
+        for sub in area.iter() {
+            match sub.value() {
+                SubpacketValue::Issuer(key_id) => {
+                    if issuer.is_none() {
+                        issuer =
+                            Some(key_id.as_bytes().try_into().ok()?);
+                    }
                 }
-            }
-        }
-        for sub in area.iter(SubpacketTag::IssuerFingerprint) {
-            if let SubpacketValue::IssuerFingerprint(fp) = sub.value() {
-                let b = fp.as_slice();
-                if b.len() >= 8 {
-                    from_fingerprint =
-                        Some(b[b.len() - 8..].try_into().expect("8 bytes"));
+                SubpacketValue::IssuerFingerprint(fp) => {
+                    let b = fp.as_bytes();
+                    if b.len() >= 8 {
+                        from_fingerprint = Some(
+                            b[b.len() - 8..].try_into().expect("8 bytes"),
+                        );
+                    }
                 }
+                _ => {}
             }
         }
         issuer.or(from_fingerprint)
     }
     if sig.version() == 3 {
-        return sig.issuers().next().and_then(|h| match h {
-            KeyHandle::KeyID(kid) => Some(kid.as_slice().try_into().ok()?),
-            KeyHandle::Fingerprint(fp) => {
-                let b = fp.as_slice();
-                Some(b[b.len() - 8..].try_into().ok()?)
-            }
-        });
+        return sig
+            .issuers()
+            .next()
+            .and_then(|kid| kid.as_bytes().try_into().ok());
     }
     area_issuer(sig.unhashed_area())
         .or_else(|| area_issuer(sig.hashed_area()))
         .or_else(|| {
-            sig.issuers().next().and_then(|h| match h {
-                KeyHandle::KeyID(kid) => Some(kid.as_slice().try_into().ok()?),
-                KeyHandle::Fingerprint(fp) => {
-                    let b = fp.as_slice();
-                    Some(b[b.len() - 8..].try_into().ok()?)
-                }
-            })
+            sig.issuers()
+                .next()
+                .and_then(|kid| kid.as_bytes().try_into().ok())
         })
 }
 
 /// Parse one blob as exactly one signature packet.
 fn seq_parse(blob: &[u8]) -> Result<Signature, String> {
-    let mut pp = PacketParser::from_bytes(blob.to_vec())
-        .map_err(|e| e.to_string())?;
-    match pp.next().map_err(|e| e.to_string())? {
-        Some((Packet::Signature(sig), rest)) => {
-            // The blob must be exactly this one packet.
-            match rest.next().map_err(|e| e.to_string())? {
-                None => Ok(sig),
-                Some(_) => Err("trailing packets".into()),
-            }
-        }
-        Some((other, _)) => Err(format!("packet tag {:?}", other.tag())),
-        None => Err("empty".into()),
+    let pile = PacketPile::from_bytes(blob).map_err(|e| e.to_string())?;
+    let mut children = pile.into_children();
+    match (children.next(), children.next()) {
+        (Some(Packet::Signature(sig)), None) => Ok(sig),
+        (Some(other), _) => Err(format!("packet tag {:?}", other.tag())),
+        (None, _) => Err("empty".into()),
     }
 }
 
-fn find_key<'a>(certs: &'a [Cert], sig: &Signature) -> Option<KeyAmalgamation<'a>> {
-    let issuers: Vec<KeyHandle> = sig.issuers().cloned().collect();
-    for cert in certs {
+/// Low-level verification: locate the signing key by issuer (key ID
+/// or fingerprint), hash the signed range, and verify the signature
+/// mathematically. Returns (key state, verify state). With no issuer
+/// at all, the first available key is tried.
+fn low_level_verify(
+    certs: &[Cert],
+    sig: &Signature,
+    path: &Path,
+    range: (u64, u64),
+) -> (&'static str, &'static str) {
+    let issuer = seq_issuer(sig);
+    let kids: Vec<[u8; 8]> = sig
+        .issuers()
+        .filter_map(|k| k.as_bytes().try_into().ok())
+        .collect();
+    let mut key = None;
+    'search: for cert in certs {
         for ka in cert.keys() {
-            let handle = ka.key_handle();
-            if issuers.iter().any(|i| i.alias(&handle))
-                || issuers.is_empty()
+            let k = ka.key();
+            let fp = k.fingerprint();
+            let fb = fp.as_bytes();
+            let low8: [u8; 8] = fb[fb.len() - 8..].try_into().expect("8 bytes");
+            if issuer == Some(low8)
+                || kids.contains(&low8)
+                || (issuer.is_none() && kids.is_empty())
             {
-                return Some(ka);
+                key = Some(k.clone());
+                break 'search;
             }
         }
     }
-    None
+    let Some(key) = key else {
+        return ("missing", "na");
+    };
+    let mut ctx = match sig.hash_algo().context() {
+        Ok(b) => b.for_signature(sig.version()),
+        Err(_) => return ("found", "ctxerr"),
+    };
+    let streamed = (|| -> Result<(), String> {
+        let mut f = File::open(path).map_err(|e| e.to_string())?;
+        f.seek(SeekFrom::Start(range.0))
+            .map_err(|e| e.to_string())?;
+        let mut src = f.take(range.1 - range.0);
+        let mut buf = vec![0u8; 1 << 20];
+        loop {
+            let n = src.read(&mut buf).map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
+            ctx.update(&buf[..n]);
+        }
+        Ok(())
+    })();
+    match streamed {
+        Ok(()) => match sig.verify_hash(&key, ctx) {
+            Ok(()) => ("found", "good"),
+            Err(_) => ("found", "bad"),
+        },
+        Err(_) => ("found", "ioerr"),
+    }
 }
 
 struct Helper<'a> {
@@ -414,7 +451,8 @@ impl VerificationHelper for Helper<'_> {
             .iter()
             .filter(|c| {
                 c.keys().any(|ka| {
-                    ids.iter().any(|id| id.alias(&ka.key_handle()))
+                    let by_fp: KeyHandle = ka.key().fingerprint().into();
+                    ids.iter().any(|id| id.aliases(&by_fp))
                 })
             })
             .cloned()
@@ -425,24 +463,23 @@ impl VerificationHelper for Helper<'_> {
         for layer in structure.into_iter() {
             if let MessageLayer::SignatureGroup { results } = layer {
                 for r in results {
-                    match r {
-                        VerificationResult::GoodChecksum(_) => {
-                            self.outcome = "good".into()
+                    self.outcome = match r {
+                        Ok(_) => "good",
+                        Err(VerificationError::MissingKey { .. }) => "missing",
+                        Err(VerificationError::MalformedSignature { .. }) => {
+                            "malformed"
                         }
-                        VerificationResult::BadChecksum(_) => {
-                            self.outcome = "bad".into()
+                        Err(VerificationError::BadSignature { .. }) => "bad",
+                        Err(VerificationError::UnknownSignature { .. }) => {
+                            "unknown"
                         }
-                        VerificationResult::MissingKey(_) => {
-                            self.outcome = "missing".into()
+                        Err(VerificationError::UnboundKey { .. }) => {
+                            "unbound"
                         }
-                        VerificationResult::MalformedSignature(_) => {
-                            self.outcome = "malformed".into()
-                        }
-                        VerificationResult::UnknownSignature(_) => {
-                            self.outcome = "unknown".into()
-                        }
-                        _ => self.outcome = "other".into(),
+                        Err(VerificationError::BadKey { .. }) => "badkey",
+                        _ => "other",
                     }
+                    .into();
                 }
             }
         }
@@ -461,7 +498,7 @@ fn builder_verify(
         certs,
         outcome: "none".into(),
     };
-    let built = DetachedVerifierBuilder::from_bytes(blob.to_vec())
+    let built = DetachedVerifierBuilder::from_bytes(blob)
         .and_then(|b| b.with_policy(policy, None, helper));
     let mut verifier = match built {
         Ok(v) => v,
@@ -475,9 +512,47 @@ fn builder_verify(
         return "ioerr:seek".into();
     }
     let mut src = file.take(range.1 - range.0);
-    match verifier.verify(&mut src) {
+    match verifier.verify_reader(src) {
         Ok(()) => verifier.into_helper().outcome,
         Err(e) => format!("verifyerr:{e}"),
+    }
+}
+
+/// Tuned parity policy for the evaluation: StandardPolicy with the
+/// legacy-format acceptances the RPM signature corpus requires
+/// (V3 signature packets and signatures, SHA1/MD5 signature hashes).
+#[derive(Debug)]
+struct TunedPolicy<'a>(StandardPolicy<'a>);
+
+impl Policy for TunedPolicy<'_> {
+    fn signature(&self, sig: &Signature, sec: HashAlgoSecurity) -> openpgp::Result<()> {
+        if sig.version() == 3
+            || matches!(sig.hash_algo(), HashAlgorithm::SHA1 | HashAlgorithm::MD5)
+        {
+            Ok(())
+        } else {
+            self.0.signature(sig, sec)
+        }
+    }
+
+    fn key(&self, _ka: &ValidErasedKeyAmalgamation<PublicParts>) -> openpgp::Result<()> {
+        Ok(())
+    }
+
+    fn symmetric_algorithm(&self, algo: SymmetricAlgorithm) -> openpgp::Result<()> {
+        self.0.symmetric_algorithm(algo)
+    }
+
+    fn aead_algorithm(&self, algo: AEADAlgorithm) -> openpgp::Result<()> {
+        self.0.aead_algorithm(algo)
+    }
+
+    fn packet(&self, packet: &Packet) -> openpgp::Result<()> {
+        if packet.tag() == Tag::Signature && packet.version() == Some(3) {
+            Ok(())
+        } else {
+            self.0.packet(packet)
+        }
     }
 }
 
@@ -507,8 +582,9 @@ fn main() {
             certs.push(cert.expect("parse cert"));
         }
     }
-    let null_policy = NullPolicy::new();
+    let null_policy = NullPolicy {}; // unit struct; ::new() is unsafe, the crate forbids unsafe
     let std_policy = StandardPolicy::new();
+    let tuned_policy = TunedPolicy(StandardPolicy::new());
     for rpm in &rpms {
         let path = Path::new(rpm);
         let Some(sliced) = slice_rpm(path) else {
@@ -545,44 +621,8 @@ fn main() {
                             Some(k) => format!("\"{}\"", hex(&k[4..])),
                             None => "null".into(),
                         };
-                        let (key_s, verify_s) = match find_key(&certs, &sig) {
-                            Some(ka) => {
-                                let key = ka.key().clone().role_as_unspecified();
-                                let mut ctx = match sig.hash_algo().context() {
-                                    Ok(c) => c,
-                                    Err(e) => {
-                                        return;
-                                    }
-                                };
-                                // stream the signed data through the hash
-                                let v = (|| -> Result<(), String> {
-                                    let mut f = File::open(path)
-                                        .map_err(|e| e.to_string())?;
-                                    f.seek(SeekFrom::Start(range.0))
-                                        .map_err(|e| e.to_string())?;
-                                    let mut src = f.take(range.1 - range.0);
-                                    let mut buf = vec![0u8; 1 << 20];
-                                    loop {
-                                        let n = src
-                                            .read(&mut buf)
-                                            .map_err(|e| e.to_string())?;
-                                        if n == 0 {
-                                            break;
-                                        }
-                                        ctx.update(&buf[..n]);
-                                    }
-                                    Ok(())
-                                })();
-                                match v {
-                                    Ok(()) => match sig.verify_hash(&key, ctx) {
-                                        Ok(()) => ("found", "good"),
-                                        Err(_) => ("found", "bad"),
-                                    },
-                                    Err(_) => ("found", "ioerr"),
-                                }
-                            }
-                            None => ("missing", "na"),
-                        };
+                        let (key_s, verify_s) =
+                            low_level_verify(&certs, &sig, path, range);
                         (
                             "\"ok\"".to_string(),
                             sig.version().to_string(),
@@ -610,7 +650,10 @@ fn main() {
                 let bs = builder_verify(
                     &std_policy, &certs, &entry.blob, path, range,
                 );
-                format!(", \"builder_null\": \"{bn}\", \"builder_std\": \"{bs}\"")
+                let bt = builder_verify(
+                    &tuned_policy, &certs, &entry.blob, path, range,
+                );
+                format!(", \"builder_null\": \"{bn}\", \"builder_std\": \"{bs}\", \"builder_tuned\": \"{bt}\"")
             } else {
                 String::new()
             };

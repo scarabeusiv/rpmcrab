@@ -105,7 +105,7 @@ sha2 = "0.11"
 # and adds only num_threads over the already-present libc; time itself pulls
 # in deranged, powerfmt, num-conv.
 time = { version = "0.3", default-features = false, features = ["local-offset"] }
-sequoia-openpgp = { version = "2.4.2", default-features = false, features = ["crypto-rust"] }
+sequoia-openpgp = { version = "2.4.2", default-features = false, features = ["crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto"] }
 
 [dev-dependencies]
 criterion = "0.8"
