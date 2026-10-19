@@ -1,0 +1,1 @@
+pass1.tsv.gz: rpm -Kv (empty rpmdb) signature lines for all 51,586 corpus RPMs on noisynator, TSV gzipped (relpath, sig lines, rc). Collected 2026-10-19. repomd.key: openSUSE Factory repo signing key (RSA 4096, key ID 29b700a4, fpr AD485664E901B867051AB15F35A2F86E29B700A4).
