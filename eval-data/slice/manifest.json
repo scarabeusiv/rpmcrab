@@ -1,0 +1,217 @@
+[
+ {
+  "case": "rsa4096-sha256",
+  "file": "rsa4096-sha256.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "modern baseline"
+ },
+ {
+  "case": "rsa4096-sha512",
+  "file": "rsa4096-sha512.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": ""
+ },
+ {
+  "case": "rsa4096-sha384",
+  "file": "rsa4096-sha384.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": ""
+ },
+ {
+  "case": "rsa4096-sha224",
+  "file": "rsa4096-sha224.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": ""
+ },
+ {
+  "case": "rsa4096-sha1",
+  "file": "rsa4096-sha1.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "weak digest, strong key"
+ },
+ {
+  "case": "rsa4096-md5",
+  "file": "rsa4096-md5.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "weakest digest; gpg may refuse"
+ },
+ {
+  "case": "rsa1024-sha1",
+  "file": "rsa1024-sha1.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa1024.asc"
+  ],
+  "note": "weak key + weak digest"
+ },
+ {
+  "case": "rsa1024-sha256",
+  "file": "rsa1024-sha256.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa1024.asc"
+  ],
+  "note": "weak key, good digest"
+ },
+ {
+  "case": "dsa1024-sha1",
+  "file": "dsa1024-sha1.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/dsa1024.asc"
+  ],
+  "note": "legacy DSA"
+ },
+ {
+  "case": "ecdsa256-sha256",
+  "file": "ecdsa256-sha256.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/ecdsa256.asc"
+  ],
+  "note": ""
+ },
+ {
+  "case": "eddsa-sha512",
+  "file": "eddsa-sha512.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/eddsa.asc"
+  ],
+  "note": "Ed25519"
+ },
+ {
+  "case": "expired-rsa2048",
+  "file": "expired-rsa2048.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/expired.asc"
+  ],
+  "note": "signed 2020-06 while key valid; key expired 2021-01-01"
+ },
+ {
+  "case": "revoked-rsa2048",
+  "file": "revoked-rsa2048.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/revoked.asc"
+  ],
+  "note": "signed before revocation"
+ },
+ {
+  "case": "subkey-rsa2048",
+  "file": "subkey-rsa2048.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/subkey.asc"
+  ],
+  "note": "signing subkey; primary cert-only"
+ },
+ {
+  "case": "header-only",
+  "file": "header-only.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "no payload signature"
+ },
+ {
+  "case": "payload-only",
+  "file": "payload-only.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "no header signature"
+ },
+ {
+  "case": "mixed-keys",
+  "file": "mixed-keys.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc",
+   "/Users/fluff/work/eval779/slice/keys/rsa1024.asc"
+  ],
+  "note": "header key in mixeddb, payload key not"
+ },
+ {
+  "case": "badmpi",
+  "file": "badmpi.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "RSA MPI byte flipped; parse ok, crypto bad"
+ },
+ {
+  "case": "badpayload",
+  "file": "badpayload.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "payload byte flipped; header sig ok, payload sig bad"
+ },
+ {
+  "case": "truncsig",
+  "file": "truncsig.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "header sig blob truncated"
+ },
+ {
+  "case": "critissuer",
+  "file": "critissuer.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "issuer subpacket critical bit set (unhashed area; crypto unaffected)"
+ },
+ {
+  "case": "zerompi",
+  "file": "zerompi.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "first MPI replaced by zero-bit MPI"
+ },
+ {
+  "case": "v5label",
+  "file": "v5label.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "version byte relabelled 4->5 (parse-level probe)"
+ },
+ {
+  "case": "newfmt",
+  "file": "newfmt.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "new-format packet headers (gpg emits old-format natively)"
+ },
+ {
+  "case": "oldfmt-indet",
+  "file": "oldfmt-indet.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "old-format indeterminate lengths"
+ },
+ {
+  "case": "unsigned",
+  "file": "unsigned.rpm",
+  "keyfiles": [],
+  "note": "no signature entries"
+ },
+ {
+  "case": "v3-rpmsign",
+  "file": "v3-rpmsign.rpm",
+  "keyfiles": [
+   "/Users/fluff/work/eval779/slice/keys/rsa4096.asc"
+  ],
+  "note": "rpmsign production-path V3"
+ }
+]
