@@ -471,9 +471,21 @@ fn check_dispatches_on_is_source() {
     };
     let mut lint =
         Lint::new(Config::default(), make_checks(), Color::for_tty(false), 80).expect("build Lint");
-    // The corpus rpm is a binary package, so both take the binary hook.
-    lint.check_batch(tasks(2), 1, &make_checks, true);
-    assert_eq!(log.lock().unwrap().checked, vec!["binary", "binary"]);
+    // The corpus rpm is a binary package and the source rpm a source
+    // package, so the first two take the binary hook and the last the
+    // source hook.
+    let mut batch = tasks(2);
+    batch.push(Task::File(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/parity/cases/source-parity/input/source-parity-1.0-1.src.rpm")
+            .canonicalize()
+            .expect("source corpus rpm is committed"),
+    ));
+    lint.check_batch(batch, 1, &make_checks, true);
+    assert_eq!(
+        log.lock().unwrap().checked,
+        vec!["binary", "binary", "source"]
+    );
 }
 
 /// The `Package` dispatch: a `.spec` input goes to `check_spec` (never
