@@ -73,8 +73,9 @@ Usage:
 
 Requires Python 3.11+ (``tomllib``).
 
-Exit codes: 0 = no gaps and nothing unresolved; 1 = gaps or unresolved
-sites need review; 2 = usage / IO / parse error.
+Exit codes: 0 = no gaps, nothing unresolved and nothing unscoped;
+1 = gaps, unresolved sites, or unscoped modules need review;
+2 = usage / IO / parse error.
 """
 
 import ast
@@ -2808,7 +2809,7 @@ def main(argv):
     print()
 
     if gaps or unresolved or port_unresolved or stale or census_bad \
-            or drift_bad:
+            or drift_bad or unscoped:
         return 1
     return 0
 
