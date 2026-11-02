@@ -308,7 +308,6 @@ impl Spellchecker {
             if self.accepts(word) {
                 continue;
             }
-            warned.insert(word.to_string());
 
             // Skip capitalized words not at sentence start.
             if starts_uppercase(word) && !at_sentence_start(&normalized, *byte_offset) {
@@ -333,6 +332,13 @@ impl Spellchecker {
             if upper_name.contains(&upper) || upper_parts.iter().any(|p| p == &upper || p == bare) {
                 continue;
             }
+
+            // Only words that survive every skip are recorded: inserting
+            // earlier would let a positional skip (capitalized, not at
+            // sentence start) poison the dedup set, so a later
+            // reportable occurrence of the same word at a sentence
+            // start would be dropped.
+            warned.insert(word.to_string());
 
             let mut suggestions = Vec::new();
             if self.ngram_suggestions {
@@ -810,6 +816,18 @@ SFX N 0 en [^ey]\n";
     }
 
     #[test]
+    #[test]
+    fn capitalized_misspelling_reported_after_mid_sentence_skip() {
+        // The finding's shape: the first "Wrld" is mid-sentence and
+        // skipped, but the skip must not poison the dedup set — the
+        // second "Wrld", at a sentence start, is reportable and is
+        // reported exactly once.
+        let checker = test_checker();
+        let result = checker.check("hello Wrld test. Wrld test", "testpkg", &[]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "Wrld");
+    }
+
     fn capitalized_misspelling_mid_sentence_is_skipped() {
         // "Wrld" is capitalized but mid-sentence: must be skipped
         // (reference treats it as a proper noun).
