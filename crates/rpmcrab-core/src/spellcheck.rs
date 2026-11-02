@@ -325,11 +325,15 @@ impl Spellchecker {
                 continue;
             }
 
-            // Skip package name matches. The possessive of a name part
-            // is a match too ("django's" for the django package): the
-            // reference adds each part's possessive to its skip list.
+            // Skip package name matches: exact parts and their
+            // possessives only ("django's" for the django package).
+            // A substring match would additionally skip any
+            // non-dictionary word that merely occurs inside the full
+            // hyphenated name — a truncated fragment like "somethin"
+            // for "something", or any single letter occurring in the
+            // name — so it is deliberately not used.
             let bare = upper.strip_suffix("'S").unwrap_or(&upper);
-            if upper_name.contains(&upper) || upper_parts.iter().any(|p| p == &upper || p == bare) {
+            if upper_parts.iter().any(|p| p == &upper || p == bare) {
                 continue;
             }
 
@@ -585,6 +589,22 @@ SFX N 0 en [^ey]\n";
         let checker = test_checker();
         let result = checker.check("mypackage", "mypackage", &[]);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn package_name_substring_is_not_skipped() {
+        // The finding's shape: "somethin" is a truncation, not the
+        // package name "something", so it must be reported; the exact
+        // name itself is still skipped.
+        let checker = test_checker();
+        let result = checker.check("hello somethin world", "something", &[]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "somethin");
+        assert!(
+            checker
+                .check("hello something world", "something", &[])
+                .is_empty()
+        );
     }
 
     #[test]
