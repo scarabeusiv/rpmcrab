@@ -664,15 +664,29 @@ fn menu_xdg_ghost_desktopfile_is_not_validated() {
         !results.iter().any(|(n, _)| n == "invalid-desktopfile"),
         "a ghost desktop file was validated: {results:?}"
     );
-    // Sanity: the same fixture is reported when the file is not a ghost, or the
-    // assertion above proves nothing.
+    // Sanity: the same finding must fire when the file is not a ghost, or
+    // the assertion above proves nothing. The fixture's desktop file is
+    // valid, so it cannot produce `invalid-desktopfile` itself: corrupt
+    // the extracted copy instead (a line without `=` is a parse error),
+    // and run the check over that.
+    let rpm_path = fixture("w6-menu-1.0-1.noarch.rpm");
+    let scratch = tempfile::tempdir().unwrap();
+    let pkg = Pkg::open(&rpm_path, scratch.path(), true).unwrap();
+    let entry = pkg
+        .files
+        .iter()
+        .find(|f| f.name == "/usr/share/applications/w6.desktop")
+        .expect("w6.desktop is in w6-menu");
+    std::fs::write(&entry.path, "[Desktop Entry]\nName Foo\n").unwrap();
+    let config = Config::default();
+    let mut filter = Filter::new(&config, Color::for_tty(false)).unwrap();
     let mut live = MenuXDGCheck::new(&Config::default());
-    let live_results = run_check(&mut live, "w6-menu-1.0-1.noarch.rpm");
+    live.check_binary(&pkg, &config, &mut filter);
+    live.after_checks(&config, &mut filter);
+    let live_results = filter.results().to_vec();
     assert!(
-        live_results
-            .iter()
-            .any(|(n, _)| n == "desktopfile-without-binary"),
-        "expected a finding for the non-ghost file: {live_results:?}"
+        live_results.iter().any(|(n, _)| n == "invalid-desktopfile"),
+        "expected invalid-desktopfile for the corrupt file: {live_results:?}"
     );
 }
 
