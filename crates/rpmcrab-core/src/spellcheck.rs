@@ -836,7 +836,6 @@ SFX N 0 en [^ey]\n";
     }
 
     #[test]
-    #[test]
     fn capitalized_misspelling_reported_after_mid_sentence_skip() {
         // The finding's shape: the first "Wrld" is mid-sentence and
         // skipped, but the skip must not poison the dedup set — the
@@ -848,6 +847,7 @@ SFX N 0 en [^ey]\n";
         assert_eq!(result[0].0, "Wrld");
     }
 
+    #[test]
     fn capitalized_misspelling_mid_sentence_is_skipped() {
         // "Wrld" is capitalized but mid-sentence: must be skipped
         // (reference treats it as a proper noun).
