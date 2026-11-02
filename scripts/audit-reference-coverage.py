@@ -2189,7 +2189,10 @@ def find_rs_wrappers(src):
         pend = match_paren(src, pstart)
         if pend < 0:
             continue
-        pnames = [p.split(":")[0].strip().lstrip("mut ").lstrip("&").strip()
+        # removeprefix, not lstrip: lstrip strips a character set, so it
+        # would mangle names starting with those letters ("message" ->
+        # "essage"); only an exact "mut " prefix is a mut binding.
+        pnames = [p.split(":")[0].strip().removeprefix("mut ").lstrip("&").strip()
                   for p in split_top_level(src[pstart + 1:pend])]
         bstart = src.find("{", pend)
         if bstart < 0:
