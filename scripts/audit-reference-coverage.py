@@ -2483,6 +2483,18 @@ KNOWN_DRIFT = {
 }
 
 
+def _reason_mentions(reasons, token):
+    """Whether ledger reason text names `token` as a word, mirroring
+    `Ledger._mentions` in parity-runner.py: word boundaries plus a
+    length floor. A bare substring match lets a short token such as
+    `config` or `empty`, which occurs in ordinary reason prose, pass a
+    genuinely port-only wildcard pattern as explained."""
+    if len(token) < 8:
+        return False
+    pat = r"(?<![a-z0-9\-])" + re.escape(token) + r"(?![a-z0-9])"
+    return re.search(pat, reasons) is not None
+
+
 def reconcile_emissions(findings, by_module, family_names, entries,
                         check_map):
     """Port patterns explained by nothing: every pattern the port can
@@ -2505,7 +2517,7 @@ def reconcile_emissions(findings, by_module, family_names, entries,
                 if (pattern in ref_names or pattern in ledger_checks
                         or pattern in family_names
                         or module_key in ledger_checks
-                        or pattern in reasons):
+                        or _reason_mentions(reasons, pattern)):
                     continue
                 if any(template_regex(t).match(pattern)
                        for t in ref_templates):
@@ -2522,7 +2534,7 @@ def reconcile_emissions(findings, by_module, family_names, entries,
             if any(c and (c.startswith(pfx) or pfx.startswith(c))
                    for c in ledger_checks):
                 continue
-            if module_key in ledger_checks or bare in reasons:
+            if module_key in ledger_checks or _reason_mentions(reasons, bare):
                 continue
             unexplained.append(pattern)
     return unexplained
