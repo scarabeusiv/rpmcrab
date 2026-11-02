@@ -819,7 +819,7 @@ pub fn setbadness_occurrences(text: &str) -> Vec<(usize, String)> {
 pub fn load_rpmlintrc(config: &mut Config, path: &Path) -> std::io::Result<()> {
     let re_filter = Regex::new(r#"^\s*addFilter\s*\(\s*r?["\'](.*?)["\']\s*\)\s*(?:#.*)?$"#)
         .expect("static regex");
-    let re_badness = Regex::new(r#"\s*setBadness\s*\([\'"](.*)[\'"],\s*[\'"]?(\d+)[\'"]?\)"#)
+    let re_badness = Regex::new(r#"^\s*setBadness\s*\([\'"](.*)[\'"],\s*[\'"]?(\d+)[\'"]?\)"#)
         .expect("static regex");
     let text = std::fs::read_to_string(path)?;
 
