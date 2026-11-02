@@ -2638,9 +2638,29 @@ def is_stale_entry(module, name, missing_modules, port_templates, by_module, che
 
 
 def main(argv):
-    args = [a for a in argv[1:] if not a.startswith("--")]
-    opts = {a.split("=")[0]: (a.split("=", 1)[1] if "=" in a else True)
-            for a in argv[1:] if a.startswith("--")}
+    # Sequential parse: --port/--ledger take their value from the next
+    # argument (the documented space form) as well as from `--flag=val`.
+    # The old dict comprehension only honoured the `=` form: a space
+    # form silently misrouted the directory into the positional slot,
+    # and a bare `--port` stored True as the directory and crashed.
+    args, opts = [], {}
+    it = iter(argv[1:])
+    for a in it:
+        if a in ("--port", "--ledger"):
+            try:
+                value = next(it)
+            except StopIteration:
+                sys.stderr.write(f"error: {a} requires a value\n")
+                return 2
+            if value.startswith("--"):
+                sys.stderr.write(f"error: {a} requires a value\n")
+                return 2
+            opts[a] = value
+        elif a.startswith("--"):
+            key, eq, value = a.partition("=")
+            opts[key] = value if eq else True
+        else:
+            args.append(a)
     ref = resolve_ref_dir(args[0] if args else None)
     root = repo_root()
     port_dir = opts.get("--port", os.path.join(
