@@ -817,8 +817,8 @@ pub fn setbadness_occurrences(text: &str) -> Vec<(usize, String)> {
 /// also recorded in `Config::rpmlintrc_setbadness`, one entry per
 /// occurrence, for the `rpmlintrc-uses-setbadness` report.
 pub fn load_rpmlintrc(config: &mut Config, path: &Path) -> std::io::Result<()> {
-    let re_filter =
-        Regex::new(r#"^\s*addFilter\s*\(\s*r?["\'](.*)["\']\s*\)"#).expect("static regex");
+    let re_filter = Regex::new(r#"^\s*addFilter\s*\(\s*r?["\'](.*?)["\']\s*\)\s*(?:#.*)?$"#)
+        .expect("static regex");
     let re_badness = Regex::new(r#"\s*setBadness\s*\([\'"](.*)[\'"],\s*[\'"]?(\d+)[\'"]?\)"#)
         .expect("static regex");
     let text = std::fs::read_to_string(path)?;
@@ -1612,6 +1612,19 @@ mod tests {
         );
         let warnings = cfg.take_load_warnings();
         assert!(warnings.is_empty(), "warnings: {warnings:?}");
+    }
+
+    #[test]
+    fn rpmlintrc_addfilter_trailing_comment_with_quote_paren_keeps_pattern() {
+        // A trailing comment containing `")` must not corrupt the
+        // captured pattern: the capture stops at the first closing
+        // quote-paren, not the last one on the line.
+        let tmp = tempfile::tempdir().unwrap();
+        let rc = tmp.path().join("pkg-rpmlintrc");
+        std::fs::write(&rc, "addFilter(\"some-pattern\")  # see \"x\")\n").unwrap();
+        let mut cfg = load_inner(&[], &[], false).unwrap();
+        load_rpmlintrc(&mut cfg, &rc).unwrap();
+        assert_eq!(cfg.rpmlintrc_filters, vec!["some-pattern".to_string()]);
     }
 
     #[test]
