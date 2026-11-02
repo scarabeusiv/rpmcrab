@@ -3017,6 +3017,28 @@ def main():
                                 ),
                             )
                         )
+            # `write_all` deletes vendored files and flavour directories
+            # the regeneration no longer produces, so --check must flag
+            # them too: iterating only generated filenames lets a stale
+            # file or directory pass as clean tree litter.
+            if DISTRO_DIR.exists():
+                for flavor, data in result.items():
+                    flavor_dir = DISTRO_DIR / flavor
+                    if flavor_dir.is_dir():
+                        for existing in flavor_dir.glob("*.toml"):
+                            if existing.name not in data["files"]:
+                                failures.append(
+                                    f"stale vendored file: {flavor}/{existing.name}"
+                                )
+                for existing in DISTRO_DIR.iterdir():
+                    if (
+                        existing.is_dir()
+                        and existing.name not in result
+                        and not (existing / "PROVENANCE").exists()
+                    ):
+                        failures.append(
+                            f"stale vendored flavour directory: {existing.name}"
+                        )
             want_prov = tmpdir / "PROVENANCE"
             have_prov = DISTRO_DIR / "PROVENANCE"
             if not have_prov.exists():
