@@ -398,7 +398,7 @@ fn no_inputs_warns_and_exits_zero() {
 /// A bogus file is a fatal result: one line on stderr, exit 3. The `-v`
 /// re-raise is gone, so the cause chain is not printed.
 #[test]
-fn verbose_prints_the_cause_chain_and_exits_one() {
+fn verbose_bogus_file_exits_three_without_cause_chain() {
     let dir = tempfile::tempdir().unwrap();
     let bogus = dir.path().join("not-an-rpm.rpm");
     std::fs::write(&bogus, b"definitely not an rpm").unwrap();
