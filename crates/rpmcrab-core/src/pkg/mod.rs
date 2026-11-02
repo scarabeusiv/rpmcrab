@@ -114,38 +114,49 @@ pub enum PkgError {
 /// one line rather than a backtrace followed by it. The hook is process-global,
 /// which is why this is scoped to the call and restored immediately.
 ///
-/// The swap is serialised: a process-wide lock is held across the
-/// take/install/restore sequence, so two threads in `guarded` cannot
-/// interleave and leave the silent hook installed permanently (each
-/// restoring the other's hook). A thread already inside `guarded` skips
-/// the swap — the outer call's silent hook is already in effect — so
-/// nesting cannot deadlock on the lock. A panic on another thread while
-/// a `guarded` call is in flight still sees the silent hook; that
-/// window is exactly the guarded call itself, as documented.
-static GUARDED_HOOK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-thread_local! {
-    static GUARDED_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+/// The hook state is reference-counted, not per-call: the silent hook is
+/// installed when the first `guarded` call starts and restored when the
+/// last one finishes, with the count guarded by a lock held only across
+/// the swap itself — never across the guarded closure, so worker threads
+/// still check packages in parallel. Without the count, two interleaved
+/// calls could restore each other's hook and leave the silent hook
+/// installed permanently, silencing every later panic's diagnostic.
+/// While any `guarded` call is in flight, a panic on another thread
+/// also sees the silent hook; that window is inherent to a
+/// process-global hook and is exactly the set of guarded calls.
+struct HookState {
+    active: usize,
+    previous: Option<Box<dyn Fn(&std::panic::PanicHookInfo) + Sync + Send + 'static>>,
 }
 
+static GUARDED_HOOK: std::sync::Mutex<HookState> = std::sync::Mutex::new(HookState {
+    active: 0,
+    previous: None,
+});
+
 pub(crate) fn guarded<T>(f: impl FnOnce() -> Result<T, PkgError>) -> Result<T, PkgError> {
-    if GUARDED_DEPTH.with(|d| d.get()) > 0 {
-        return match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
-            Ok(result) => result,
-            Err(payload) => Err(PkgError::Decode {
-                message: panic_message(payload),
-            }),
-        };
+    {
+        let mut state = GUARDED_HOOK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.active == 0 {
+            state.previous = Some(std::panic::take_hook());
+            std::panic::set_hook(Box::new(|_| {}));
+        }
+        state.active += 1;
     }
-    let _lock = GUARDED_HOOK_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    GUARDED_DEPTH.with(|d| d.set(1));
-    let previous = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-    std::panic::set_hook(previous);
-    GUARDED_DEPTH.with(|d| d.set(0));
+    {
+        let mut state = GUARDED_HOOK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.active -= 1;
+        if state.active == 0 {
+            if let Some(previous) = state.previous.take() {
+                std::panic::set_hook(previous);
+            }
+        }
+    }
     match outcome {
         Ok(result) => result,
         Err(payload) => Err(PkgError::Decode {
