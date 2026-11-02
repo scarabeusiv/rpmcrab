@@ -113,6 +113,54 @@ def test_reference_grep_missing_shapes():
 
 
 # ---------------------------------------------------------------------------
+# E-R13: a parameter with no resolvable call-site argument is
+# UNRESOLVED, never silently resolved-empty
+# ---------------------------------------------------------------------------
+
+def _param_module_src(with_call_site):
+    call = """
+    def check(self):
+        self._emit('foo')
+""" if with_call_site else ""
+    return f"""class SynCheck:
+    def _emit(self, tag):
+        self.output.add_info('E', 'pkg', 'prefix-' + tag)
+        self.output.add_info('E', 'pkg', tag)
+{call}"""
+
+
+def _resolve_emit_names(src):
+    import ast
+
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "checks", "SynCheck.py")
+        _write(path, src)
+        mod = audit.RefModule(path, "SynCheck", d)
+        func = mod.funcs["_emit"]
+        out = []
+        for node in ast.walk(func):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                    and node.func.attr == "add_info":
+                names, ok = audit.resolve_add_info_name(mod, node, func)
+                out.append((tuple(sorted(names)), ok))
+        return sorted(out)
+
+
+def test_parameter_without_call_site_is_unresolved():
+    # Synthetic module only (the finding's mechanism; live pinned-tree
+    # incidence is unverified): both the 'prefix-' + tag form and the
+    # bare-parameter form resolve to (set(), False), so audit_reference
+    # records an UNRESOLVED entry instead of dropping the site.
+    results = _resolve_emit_names(_param_module_src(False))
+    assert results == [((), False), ((), False)], results
+
+
+def test_parameter_with_call_site_still_resolves():
+    results = _resolve_emit_names(_param_module_src(True))
+    assert results == [(("foo",), True), (("prefix-foo",), True)], results
+
+
+# ---------------------------------------------------------------------------
 # Port side: the closure-template format! shape (PostCheck)
 # ---------------------------------------------------------------------------
 

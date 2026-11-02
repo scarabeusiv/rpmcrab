@@ -1216,13 +1216,22 @@ def call_site_arg(mod, funcname, param_index, resolving=frozenset()):
 
 def resolve_name_fallback(mod, func, name, resolving):
     """Resolve a bare Name that normal lookup missed: a parameter (trace to
-    the caller's argument) or a for-loop variable. Returns (names, ok)."""
+    the caller's argument) or a for-loop variable. Returns (names, ok).
+
+    A parameter whose call sites resolve to no names is UNRESOLVED, not
+    silently resolved-empty: with no names the call site adds nothing
+    to the findings and no unresolved entry either, so a finding the
+    reference emits is dropped from the audit without a trace. The
+    loop-variable branch keeps its documented empty-ok semantics (an
+    empty config table genuinely yields no names); only the
+    no-call-site parameter case changes here.
+    """
     out = set()
     if func is not None:
         parnames = [a.arg for a in func.args.args]
         if name in parnames:
             out.update(call_site_arg(mod, func.name, parnames.index(name), resolving))
-            return out, True
+            return out, bool(out)
         vals, ok = loop_var_values(mod, func, name, resolving)
         if ok:
             out.update(v.t for v in vals if isinstance(v, S))
