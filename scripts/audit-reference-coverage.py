@@ -451,17 +451,13 @@ def fn_err_literals(src, fn_name):
     brace = src.find("{", m.end())
     if brace == -1:
         return []
-    depth = 0
-    end = brace
-    for i in range(brace, len(src)):
-        if src[i] == "{":
-            depth += 1
-        elif src[i] == "}":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-    body = src[brace:end + 1]
+    # match_brace is string-aware: a brace inside a string literal must
+    # not move the body end (naive counting over-collects literals from
+    # neighbouring functions when a dynamic-site body contains one).
+    end = match_brace(src, brace)
+    if end < 0:
+        return []
+    body = src[brace:end]
     # Find Err("literal") and Err((level, "literal", ...)) tuple forms.
     found = re.findall(r"Err\(\s*\"([^\"]+)\"", body)
     # Tuple form: Err((Level::Error, "name", ...)) - second element
@@ -485,17 +481,13 @@ def fn_push_literals(src, fn_name):
     brace = src.find("{", m.end())
     if brace == -1:
         return []
-    depth = 0
-    end = brace
-    for i in range(brace, len(src)):
-        if src[i] == "{":
-            depth += 1
-        elif src[i] == "}":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-    body = src[brace:end + 1]
+    # match_brace is string-aware: a brace inside a string literal must
+    # not move the body end (naive counting over-collects literals from
+    # neighbouring functions when a dynamic-site body contains one).
+    end = match_brace(src, brace)
+    if end < 0:
+        return []
+    body = src[brace:end]
     found = re.findall(r"\.push\(\s*\"([^\"]+)\"", body)
     return found
 
@@ -507,17 +499,13 @@ def _fn_body_literals(src, fn_name):
     brace = src.find("{", m.end())
     if brace == -1:
         return []
-    depth = 0
-    end = brace
-    for i in range(brace, len(src)):
-        if src[i] == "{":
-            depth += 1
-        elif src[i] == "}":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-    body = src[brace:end + 1]
+    # match_brace is string-aware: a brace inside a string literal must
+    # not move the body end (naive counting over-collects literals from
+    # neighbouring functions when a dynamic-site body contains one).
+    end = match_brace(src, brace)
+    if end < 0:
+        return []
+    body = src[brace:end]
     return re.findall(r"\"([^\"]+)\"", body)
 
 
@@ -557,17 +545,13 @@ def fn_describe_tuple_literals(src, fn_name):
     brace = src.find("{", m.end())
     if brace == -1:
         return []
-    depth = 0
-    end = brace
-    for i in range(brace, len(src)):
-        if src[i] == "{":
-            depth += 1
-        elif src[i] == "}":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-    body = src[brace:end + 1]
+    # match_brace is string-aware: a brace inside a string literal must
+    # not move the body end (naive counting over-collects literals from
+    # neighbouring functions when a dynamic-site body contains one).
+    end = match_brace(src, brace)
+    if end < 0:
+        return []
+    body = src[brace:end]
     return re.findall(r"\(\s*Level::\w+\s*,\s*\"([^\"]+)\"", body)
 
 
