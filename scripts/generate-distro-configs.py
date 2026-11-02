@@ -2948,13 +2948,6 @@ def main():
         if not m or m.group(1) not in PINS:
             ap.error(f"bad --pin {pin!r}, want FLAVOR=SHA:DATE")
         pins[m.group(1)] = (m.group(2), m.group(3))
-    if args.refresh:
-        # The refresh PR must carry the final pins: --check regenerates from
-        # PINS, so file-only pins would fail the PR's own drift gate.
-        # Rewritten after --pin overrides so combined flags cannot diverge
-        # the file from the in-memory pins used below.
-        rewrite_pins(Path(__file__).resolve(), pins)
-
     ref_dir = Path(args.ref_dir) if args.ref_dir else None
     try:
         result, provenance, pruned_log, pkg_pruned_log, pie_pruned_log, files_out, dropped_log, retargeted_log, scoped_log, deduped_filters_log, threshold_log, changelog_log, added_log, adjudicated_log = generate(
@@ -2967,6 +2960,15 @@ def main():
             file=sys.stderr,
         )
         return EXIT_FETCH_EXHAUSTED
+
+    if args.refresh:
+        # The refresh PR must carry the final pins: --check regenerates from
+        # PINS, so file-only pins would fail the PR's own drift gate.
+        # Rewritten only after generate() succeeds, and after --pin
+        # overrides so combined flags cannot diverge the file from the
+        # in-memory pins used above: a generation failure (e.g.
+        # FetchExhausted) must not leave pins advanced with files stale.
+        rewrite_pins(Path(__file__).resolve(), pins)
 
     if args.check:
         failures = []
