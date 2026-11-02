@@ -2281,9 +2281,17 @@ def test_main_other_errors_are_not_neutral():
 
 
 def _generate_return(provenance):
+    # The --check stale scan compares the disk against the generated
+    # flavour set, so the stub must return that set (disk-backed here):
+    # an empty result would make every vendored flavour directory read
+    # as stale, and the clean test would fail for the wrong reason.
     empty = []
+    files = {}
+    for name in gen.FILES["opensuse"]:
+        path = gen.DISTRO_DIR / "opensuse" / name
+        files[name] = path.read_text(encoding="utf-8") if path.exists() else ""
     return (
-        {},
+        {"opensuse": {"files": files}},
         provenance,
         empty, empty, empty,
         list(gen.FILES["opensuse"]),
