@@ -128,6 +128,7 @@ impl<'a> Worker<'a> {
                 None,
                 false,
                 "panic while checking the package".to_string(),
+                Durations::default(),
             ),
         }
     }
@@ -188,6 +189,7 @@ impl<'a> Worker<'a> {
                                 None,
                                 true,
                                 format!("fatal error while reading {display}: {e}"),
+                                Durations::default(),
                             );
                         }
                     }
@@ -206,6 +208,7 @@ impl<'a> Worker<'a> {
                                 None,
                                 false,
                                 format!("fatal error while reading {display}: {e}"),
+                                Durations::default(),
                             );
                         }
                     }
@@ -226,6 +229,7 @@ impl<'a> Worker<'a> {
                             None,
                             false,
                             format!("fatal error while reading {display}: {e}"),
+                            Durations::default(),
                         );
                     }
                 }
@@ -277,6 +281,7 @@ impl<'a> Worker<'a> {
                 pkg_arch,
                 is_spec,
                 format!("fatal error while reading {display}: {e}"),
+                durations,
             );
         }
 
@@ -320,10 +325,11 @@ impl TaskResult {
         pkg_arch: Option<String>,
         is_spec: bool,
         msg: String,
+        durations: Durations,
     ) -> Self {
         Self {
             filter,
-            durations: Durations::default(),
+            durations,
             checked_files: Vec::new(),
             states: Vec::new(),
             pkg_name,
