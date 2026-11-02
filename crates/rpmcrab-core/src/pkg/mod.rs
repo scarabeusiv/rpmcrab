@@ -113,11 +113,39 @@ pub enum PkgError {
 /// The default panic hook is replaced for the duration so the user sees that
 /// one line rather than a backtrace followed by it. The hook is process-global,
 /// which is why this is scoped to the call and restored immediately.
+///
+/// The swap is serialised: a process-wide lock is held across the
+/// take/install/restore sequence, so two threads in `guarded` cannot
+/// interleave and leave the silent hook installed permanently (each
+/// restoring the other's hook). A thread already inside `guarded` skips
+/// the swap — the outer call's silent hook is already in effect — so
+/// nesting cannot deadlock on the lock. A panic on another thread while
+/// a `guarded` call is in flight still sees the silent hook; that
+/// window is exactly the guarded call itself, as documented.
+static GUARDED_HOOK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+thread_local! {
+    static GUARDED_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub(crate) fn guarded<T>(f: impl FnOnce() -> Result<T, PkgError>) -> Result<T, PkgError> {
+    if GUARDED_DEPTH.with(|d| d.get()) > 0 {
+        return match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+            Ok(result) => result,
+            Err(payload) => Err(PkgError::Decode {
+                message: panic_message(payload),
+            }),
+        };
+    }
+    let _lock = GUARDED_HOOK_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    GUARDED_DEPTH.with(|d| d.set(1));
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
     std::panic::set_hook(previous);
+    GUARDED_DEPTH.with(|d| d.set(0));
     match outcome {
         Ok(result) => result,
         Err(payload) => Err(PkgError::Decode {
@@ -1496,6 +1524,57 @@ mod tests {
     /// A genuine `.nosrc.rpm` opens and reads its header like any source
     /// package: the header is complete, and the `NoSource` tarball is
     /// absent from the payload by construction.
+    /// Concurrent `guarded` calls must not leave the silent hook
+    /// installed: after threads that panic inside `guarded` join, a
+    /// panic outside `guarded` still reaches the caller's hook.
+    #[test]
+    fn guarded_concurrent_calls_restore_the_hook() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static PROBE_HITS: AtomicUsize = AtomicUsize::new(0);
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {
+            PROBE_HITS.fetch_add(1, Ordering::SeqCst);
+        }));
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                std::thread::spawn(|| {
+                    for _ in 0..25 {
+                        let _ = guarded::<()>(|| panic!("guarded probe panic"));
+                        let _ = guarded(|| Ok::<(), PkgError>(()));
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        // Another thread may be mid-`guarded` (e.g. a `Pkg::open` in a
+        // neighbouring test) when a probe fires; retry until quiet.
+        let mut restored = false;
+        for _ in 0..1000 {
+            PROBE_HITS.store(0, Ordering::SeqCst);
+            let _ = std::panic::catch_unwind(|| panic!("hook probe"));
+            if PROBE_HITS.load(Ordering::SeqCst) > 0 {
+                restored = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        std::panic::set_hook(previous);
+        assert!(
+            restored,
+            "caller's panic hook must survive concurrent guarded calls"
+        );
+    }
+
+    /// A `guarded` call nested inside another must not deadlock on the
+    /// hook lock: the inner call runs under the outer silent hook.
+    #[test]
+    fn guarded_nested_call_does_not_deadlock() {
+        let value = guarded(|| guarded(|| Ok::<u32, PkgError>(42))).unwrap();
+        assert_eq!(value, 42);
+    }
+
     #[test]
     fn open_nosrc_fixture_reads_its_header() {
         use librpm::Tag;
