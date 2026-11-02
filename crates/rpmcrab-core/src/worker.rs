@@ -121,15 +121,25 @@ impl<'a> Worker<'a> {
             self.check_package_inner(task, &display)
         })) {
             Ok(result) => result,
-            Err(_) => TaskResult::fatal(
-                self.fresh_filter(),
-                display.clone(),
-                display,
-                None,
-                false,
-                "panic while checking the package".to_string(),
-                Durations::default(),
-            ),
+            Err(_) => {
+                // As on the guarded-error path, drop state accumulated
+                // before the failure and reset, so the next package on
+                // this worker starts clean instead of reusing the
+                // panicked package's unexported state.
+                for check in &mut self.checks {
+                    let _ = check.export_state();
+                    check.reset();
+                }
+                TaskResult::fatal(
+                    self.fresh_filter(),
+                    display.clone(),
+                    display,
+                    None,
+                    false,
+                    "panic while checking the package".to_string(),
+                    Durations::default(),
+                )
+            }
         }
     }
 
@@ -534,6 +544,97 @@ mod tests {
         assert_eq!(results.len(), 3);
         let log = log.lock().unwrap();
         // `pkg.name` carries the full path; the reset sequence is what matters.
+        let seq: Vec<&str> = log
+            .iter()
+            .map(|e| {
+                if e == "reset" {
+                    "reset"
+                } else if e.contains("good1") {
+                    "check:good1"
+                } else if e.contains("bad") {
+                    "check:bad"
+                } else {
+                    "check:good2"
+                }
+            })
+            .collect();
+        assert_eq!(
+            seq.as_slice(),
+            &[
+                "check:good1",
+                "reset",
+                "check:bad",
+                "reset",
+                "check:good2",
+                "reset",
+            ]
+        );
+    }
+
+    /// A panic outside the guarded check loop (here: in `export_state`,
+    /// which runs after the loop) resets the worker's checks too, so
+    /// the next package starts clean instead of reusing stale state.
+    #[test]
+    fn panic_outside_check_loop_resets_the_worker() {
+        struct PanicOnExport {
+            log: Arc<Mutex<Vec<String>>>,
+            armed: Arc<Mutex<bool>>,
+        }
+        impl Check for PanicOnExport {
+            fn name(&self) -> &'static str {
+                "PanicOnExport"
+            }
+            fn check(&mut self, _pkg: &Pkg, _config: &Config, _out: &mut Filter) {}
+            fn check_spec(&mut self, pkg: &SpecPkg, _config: &Config, _out: &mut Filter) {
+                self.log.lock().unwrap().push(format!("check:{}", pkg.name));
+                if pkg.name.contains("bad") {
+                    *self.armed.lock().unwrap() = true;
+                }
+            }
+            fn export_state(&mut self) -> Option<Box<dyn std::any::Any + Send>> {
+                // Panic once, so the outer panic path's own
+                // export-and-reset pass can run instead of panicking
+                // again.
+                if *self.armed.lock().unwrap() {
+                    *self.armed.lock().unwrap() = false;
+                    panic!("boom-export");
+                }
+                None
+            }
+            fn reset(&mut self) {
+                self.log.lock().unwrap().push("reset".to_string());
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let armed = Arc::new(Mutex::new(false));
+        let tasks: Vec<Task> = ["good1", "bad", "good2"]
+            .into_iter()
+            .map(|name| {
+                let spec = dir.path().join(format!("{name}.spec"));
+                std::fs::write(&spec, format!("Name: {name}\n")).unwrap();
+                Task::File(spec)
+            })
+            .collect();
+        let config = Config::default();
+        let log2 = Arc::clone(&log);
+        let armed2 = Arc::clone(&armed);
+        let results = run_tasks(
+            tasks,
+            1,
+            &config,
+            &move || {
+                vec![Box::new(PanicOnExport {
+                    log: Arc::clone(&log2),
+                    armed: Arc::clone(&armed2),
+                }) as Box<dyn Check>]
+            },
+            Color::for_tty(false),
+        );
+        assert_eq!(results.len(), 3);
+        assert!(results[1].fatal.is_some());
+        let log = log.lock().unwrap();
         let seq: Vec<&str> = log
             .iter()
             .map(|e| {
