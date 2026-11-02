@@ -700,13 +700,21 @@ fn python_ghost_site_packages_dir_is_not_inspected() {
             "a ghost {ghost} was inspected: {results:?}"
         );
     }
-    // Sanity: the same fixture is reported when the directory is not a ghost.
+    // Sanity: the same fixture is reported when the directory is not a ghost,
+    // for both the `tests/` and the `doc/` arm, or the negative assertion
+    // above proves nothing for the arm it does not cover.
     let mut live = PythonCheck::new(&Config::default());
     let live_results = run_check(&mut live, "w6-python-1.0-1.noarch.rpm");
     assert!(
         live_results
             .iter()
             .any(|(n, _)| n == "python-tests-in-site-packages"),
-        "expected a finding for the non-ghost directory: {live_results:?}"
+        "expected a finding for the non-ghost tests directory: {live_results:?}"
+    );
+    assert!(
+        live_results
+            .iter()
+            .any(|(n, _)| n == "python-doc-in-site-packages"),
+        "expected a finding for the non-ghost doc directory: {live_results:?}"
     );
 }
