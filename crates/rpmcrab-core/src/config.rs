@@ -721,8 +721,15 @@ fn load_inner(
 /// `\x0b`, `\x0c`, `\x1c`-`\x1e`, `\x85`, `\u2028`, `\u2029` (Rust's
 /// `str::lines` only handles `\n` and `\r\n`).
 fn splitlines(text: &str) -> Vec<&str> {
-    text.split(|c| {
-        matches!(
+    // Python `str.splitlines()`: `\r\n` is a single break (not two),
+    // and a trailing break leaves no phantom empty line. Splitting on
+    // every break character would yield an empty slice between `\r`
+    // and `\n`, drifting every later line number by one per CRLF line.
+    let mut lines = Vec::new();
+    let mut start = 0;
+    let mut chars = text.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        let is_break = matches!(
             c,
             '\n' | '\r'
                 | '\x0b'
@@ -733,9 +740,20 @@ fn splitlines(text: &str) -> Vec<&str> {
                 | '\u{85}'
                 | '\u{2028}'
                 | '\u{2029}'
-        )
-    })
-    .collect()
+        );
+        if !is_break {
+            continue;
+        }
+        if c == '\r' && chars.peek().is_some_and(|(_, next)| *next == '\n') {
+            chars.next();
+        }
+        lines.push(&text[start..i]);
+        start = chars.peek().map_or(text.len(), |(j, _)| *j);
+    }
+    if start < text.len() {
+        lines.push(&text[start..]);
+    }
+    lines
 }
 
 /// The directive a rpmlintrc line attempts but does not parse as: the
@@ -1457,6 +1475,17 @@ mod tests {
         );
         assert!(setbadness_occurrences("").is_empty());
         assert!(setbadness_occurrences("# only a comment\n").is_empty());
+    }
+
+    #[test]
+    fn splitlines_treats_crlf_as_one_break() {
+        // Python `str.splitlines()` parity: `\r\n` is one break, a
+        // trailing break leaves no phantom line, a lone `\r` breaks.
+        assert_eq!(splitlines("a\r\nb"), vec!["a", "b"]);
+        assert_eq!(splitlines("a\r\nb\r\n"), vec!["a", "b"]);
+        assert_eq!(splitlines("a\n\nb"), vec!["a", "", "b"]);
+        assert_eq!(splitlines("a\rb"), vec!["a", "b"]);
+        assert_eq!(splitlines(""), Vec::<&str>::new());
     }
 
     #[test]
