@@ -2256,7 +2256,10 @@ def append_extra_filters(text, filters):
             out.append(line)
             continue
         out.append(line)
-    assert done, "no Filters list found to append to"
+    # Explicit raise, not bare assert: bare asserts vanish under
+    # `python -O`, silently shipping a config without the extras.
+    if not done:
+        raise AssertionError("no Filters list found to append to")
     return "".join(out)
 
 
@@ -2290,7 +2293,9 @@ def append_extra_checks(text, checks):
             out.append(line)
             continue
         out.append(line)
-    assert done, "no Checks list found to append to"
+    # Explicit raise, not bare assert (see append_extra_filters).
+    if not done:
+        raise AssertionError("no Checks list found to append to")
     return "".join(out)
 
 
@@ -2324,7 +2329,9 @@ def append_extra_atomic_allowed_dirs(text, dirs):
             out.append(line)
             continue
         out.append(line)
-    assert done, "no AtomicAllowedDirs list found to append to"
+    # Explicit raise, not bare assert (see append_extra_filters).
+    if not done:
+        raise AssertionError("no AtomicAllowedDirs list found to append to")
     return "".join(out)
 
 
@@ -2435,9 +2442,11 @@ def remove_excluded_checks(text, checks):
             )
             continue
         out.append(line)
-    assert not wanted, "excluded checks not in Checks list: %s" % sorted(
-        wanted.values()
-    )
+    # Explicit raise, not bare assert (see append_extra_filters).
+    if wanted:
+        raise AssertionError(
+            "excluded checks not in Checks list: %s" % sorted(wanted.values())
+        )
     return "".join(out)
 
 
