@@ -454,3 +454,37 @@ accidentally make a shared library or an executable live-patchable.
 ar-failed="""
 The `ar` archive could not be parsed. The archive may be corrupted.
 """
+
+missing-branch-protection="""
+The binary or shared library was built without AArch64 branch
+protection: its `.note.gnu.property` does not record both the BTI
+(branch target identification) and PAC (pointer authentication)
+features, and its `.text` contains no `BTI` landing-pad
+instructions, so at least one of the two features cannot be enforced
+at runtime. Rebuild with `%{optflags}` unmodified, which carries
+`-mbranch-protection=standard` on AArch64. This check only verifies
+absence: the property is merged over all link inputs, so code
+compiled with the flag whose property was cleared by an input
+carrying none (hand-written assembly, a prebuilt object) does not
+fire — rebuilding cannot restore the property there, the input
+itself must carry one. Verify with `readelf -n` that the GNU
+property list includes `BTI` and `PAC`.
+"""
+rwx-segment="""
+The binary or shared library contains a `PT_LOAD` segment mapped
+readable, writable and executable at once, so any write to that
+segment becomes executed code. No legitimate linked image needs a
+segment with all three permissions: code belongs in a read-execute
+segment and writable data in a read-write one. Relink so no `PT_LOAD`
+segment carries `RWE` permissions (a common cause is a linker script
+or `-z execstack` applied to the wrong segment); verify with
+`readelf -lW` that no `LOAD` segment shows `RWE`.
+"""
+executable-with-non-pic-code="""
+The position-independent executable carries text relocations
+(`DT_TEXTREL`): it was linked with non-PIC code, so the dynamic
+linker must patch executable code at load time and the text segment
+cannot stay shared and read-only. Rebuild the executable's objects
+with `-fPIE` (normally already in `%{optflags}`) and verify with
+`readelf -d` that no `TEXTREL` entry remains.
+"""

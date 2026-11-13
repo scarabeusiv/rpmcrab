@@ -593,20 +593,39 @@ pub(crate) fn parse_elf(data: &[u8]) -> Result<goblin::elf::Elf<'_>, goblin::err
 
 /// `NT_GNU_PROPERTY_TYPE_0` note type.
 const NT_GNU_PROPERTY_TYPE_0: u32 = 5;
-/// Property type of `GNU_PROPERTY_X86_FEATURE_1_AND`.
-const GNU_PROPERTY_X86_FEATURE_1_AND: u32 = 0xc000_0002;
-/// `GNU_PROPERTY_X86_FEATURE_1_AND` bit: indirect branch tracking.
+/// Property type of `GNU_PROPERTY_FEATURE_1_AND`, shared by the x86
+/// and AArch64 feature-1 properties: the machine, not the type,
+/// decides which feature bits the value carries.
+const GNU_PROPERTY_FEATURE_1_AND: u32 = 0xc000_0002;
+/// x86 `GNU_PROPERTY_FEATURE_1_AND` bit: indirect branch tracking.
 const X86_FEATURE_1_IBT: u32 = 1 << 0;
-/// `GNU_PROPERTY_X86_FEATURE_1_AND` bit: shadow stack.
+/// x86 `GNU_PROPERTY_FEATURE_1_AND` bit: shadow stack.
 const X86_FEATURE_1_SHSTK: u32 = 1 << 1;
 
 /// Both control-flow features a `-fcf-protection` build records in
-/// `GNU_PROPERTY_X86_FEATURE_1_AND` (IBT and SHSTK together).
+/// `GNU_PROPERTY_FEATURE_1_AND` (IBT and SHSTK together).
 const X86_FEATURE_1_IBT_SHSTK: u32 = X86_FEATURE_1_IBT | X86_FEATURE_1_SHSTK;
 /// `ENDBR64`: the instruction `-fcf-protection` emits at every
 /// indirect-branch target — the code-level record that the flag
 /// reached the compiler, independent of the merged property note.
 const ENDBR64: [u8; 4] = [0xf3, 0x0f, 0x1e, 0xfa];
+/// `GNU_PROPERTY_AARCH64_FEATURE_1_AND` bit: branch target identification.
+const AARCH64_FEATURE_1_BTI: u32 = 1 << 0;
+/// `GNU_PROPERTY_AARCH64_FEATURE_1_AND` bit: pointer authentication.
+const AARCH64_FEATURE_1_PAC: u32 = 1 << 1;
+
+/// Both branch-protection features a `-mbranch-protection=standard`
+/// build records in `GNU_PROPERTY_AARCH64_FEATURE_1_AND` (BTI and PAC
+/// together).
+const AARCH64_FEATURE_1_BTI_PAC: u32 = AARCH64_FEATURE_1_BTI | AARCH64_FEATURE_1_PAC;
+/// `BTI` landing-pad instructions, little-endian encodings: the
+/// AArch64 analogue of `ENDBR64` — `-mbranch-protection` emits one at
+/// every indirect-branch target (`BTI c`, `BTI j`, `BTI jc`).
+const BTI_LANDING_PADS: [[u8; 4]; 3] = [
+    [0x1f, 0x24, 0x03, 0xd5],
+    [0x5f, 0x24, 0x03, 0xd5],
+    [0x9f, 0x24, 0x03, 0xd5],
+];
 
 /// `mov r64, %fs:0x28`: the instruction the x86-64 stack protector
 /// emits to load the TLS stack guard (`__stack_chk_guard`) — in a
@@ -636,10 +655,12 @@ fn is_stack_guard_load(window: &[u8]) -> bool {
         && window[8] == 0x00
 }
 
-/// State of `GNU_PROPERTY_X86_FEATURE_1_AND` in an ELF's
-/// `.note.gnu.property`.
+/// State of `GNU_PROPERTY_FEATURE_1_AND` in an ELF's
+/// `.note.gnu.property`, for the machine the property belongs to
+/// (x86_64 IBT/SHSTK, AArch64 BTI/PAC — the property type is shared,
+/// the bits are per-machine).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum X86Feature1And {
+enum Feature1And {
     /// No such property entry in any GNU property note.
     #[default]
     Absent,
@@ -650,11 +671,14 @@ enum X86Feature1And {
     Unreadable,
 }
 
-/// Extract the `GNU_PROPERTY_X86_FEATURE_1_AND` state from one
-/// `.note.gnu.property` section's bytes. Note entries are 4-byte
+/// Extract the `GNU_PROPERTY_FEATURE_1_AND` state from one
+/// `.note.gnu.property` section's bytes, for either machine: the
+/// property type is the same, so the walk is arch-agnostic and the
+/// caller files the result under the machine it belongs to.
+/// Note entries are 4-byte
 /// aligned; property entries inside a `GNU` property note are 8-byte
 /// aligned in ELF64 and 4-byte aligned in ELF32.
-fn parse_x86_feature_1_and(section: &[u8], is_64: bool) -> X86Feature1And {
+fn parse_feature_1_and(section: &[u8], is_64: bool) -> Feature1And {
     let u32_at = |b: &[u8], off: usize| -> Option<u32> {
         b.get(off..off + 4)
             .map(|s| u32::from_le_bytes(s.try_into().unwrap()))
@@ -681,7 +705,7 @@ fn parse_x86_feature_1_and(section: &[u8], is_64: bool) -> X86Feature1And {
             // A truncated GNU property note may have carried the
             // property in its lost tail; its absence is not proven.
             if is_gnu_property {
-                return X86Feature1And::Unreadable;
+                return Feature1And::Unreadable;
             }
             break;
         }
@@ -697,30 +721,30 @@ fn parse_x86_feature_1_and(section: &[u8], is_64: bool) -> X86Feature1And {
                     break;
                 };
                 let pr_datasz = pr_datasz as usize;
-                if pr_type == GNU_PROPERTY_X86_FEATURE_1_AND {
+                if pr_type == GNU_PROPERTY_FEATURE_1_AND {
                     // The entry exists; a value that is cut off or too
                     // small to hold the feature word is unreadable,
                     // not absent.
                     if pr_datasz < 4 {
-                        return X86Feature1And::Unreadable;
+                        return Feature1And::Unreadable;
                     }
                     return match u32_at(desc, poff + 8) {
-                        Some(v) => X86Feature1And::Present(v),
-                        None => X86Feature1And::Unreadable,
+                        Some(v) => Feature1And::Present(v),
+                        None => Feature1And::Unreadable,
                     };
                 }
                 if poff + 8 + pr_datasz > desc.len() {
                     // A non-feature entry overrunning the desc ends
                     // the walk here; the feature entry could have sat
                     // in the lost tail, so absence is not proven.
-                    return X86Feature1And::Unreadable;
+                    return Feature1And::Unreadable;
                 }
                 poff += align(8 + pr_datasz, prop_align);
             }
         }
         off = desc_at + align(descsz, 4);
     }
-    X86Feature1And::Absent
+    Feature1And::Absent
 }
 
 struct ReadelfInfo {
@@ -858,13 +882,20 @@ struct ReadelfInfo {
     /// The dynamic symbol table defines `main`: an executable-entry shim
     /// linked into binaries, not a regular shared library.
     defines_main: bool,
-    /// `GNU_PROPERTY_X86_FEATURE_1_AND` state from
+    /// `GNU_PROPERTY_FEATURE_1_AND` state from
     /// `.note.gnu.property` (x86_64 only).
-    x86_feature_1_and: X86Feature1And,
+    x86_feature_1_and: Feature1And,
     /// The binary's `.text` contains an `ENDBR64` instruction: code
     /// compiled with `-fcf-protection` is present, whatever the merged
     /// property note records.
     has_endbr64: bool,
+    /// `GNU_PROPERTY_AARCH64_FEATURE_1_AND` state from
+    /// `.note.gnu.property` (AArch64 only).
+    aarch64_feature_1_and: Feature1And,
+    /// The binary's `.text` contains a `BTI` landing-pad
+    /// instruction: code compiled with `-mbranch-protection` is
+    /// present, whatever the merged property note records.
+    has_bti_landing_pad: bool,
     /// The binary's `.text` contains a stack-guard load
     /// (`mov r64, %fs:0x28`): code compiled with the stack protector
     /// is present, whether or not any `__stack_chk_fail` reference
@@ -971,8 +1002,10 @@ impl ReadelfInfo {
             bind_now: false,
             has_plt_relocs: false,
             has_dynamic: false,
-            x86_feature_1_and: X86Feature1And::Absent,
+            x86_feature_1_and: Feature1And::Absent,
             has_endbr64: false,
+            aarch64_feature_1_and: Feature1And::Absent,
+            has_bti_landing_pad: false,
             has_stack_guard_load: false,
             code_machines: Vec::new(),
             failed: None,
@@ -1110,12 +1143,17 @@ impl ReadelfInfo {
             }]);
         }
 
-        // x86 control-flow protection data (consumed by
-        // check_hardening's missing-cf-protection): the merged
-        // FEATURE_1_AND property state and the code-level ENDBR64
-        // record. Properties are an x86 concept here; other
-        // architectures' notes are not read.
-        if elf.header.e_machine == goblin::elf::header::EM_X86_64 {
+        // Control-flow protection data (consumed by
+        // check_hardening's missing-cf-protection and
+        // missing-branch-protection): the merged FEATURE_1_AND
+        // property state and the code-level landing-pad record
+        // (ENDBR64 on x86_64, BTI on AArch64). The property type is
+        // shared by both machines; the machine decides which field
+        // the state lands in and which landing pad `.text` is
+        // scanned for. Other architectures' notes are not read.
+        if elf.header.e_machine == goblin::elf::header::EM_X86_64
+            || elf.header.e_machine == goblin::elf::header::EM_AARCH64
+        {
             for sh in &elf.section_headers {
                 let Some((start, end)) = section_range(sh) else {
                     continue;
@@ -1126,16 +1164,27 @@ impl ReadelfInfo {
                 };
                 match elf.shdr_strtab.get_at(sh.sh_name) {
                     Some(".note.gnu.property") => {
-                        let state = parse_x86_feature_1_and(bytes, elf.is_64);
-                        if self.x86_feature_1_and == X86Feature1And::Absent {
-                            self.x86_feature_1_and = state;
+                        let state = parse_feature_1_and(bytes, elf.is_64);
+                        if elf.header.e_machine == goblin::elf::header::EM_X86_64 {
+                            if self.x86_feature_1_and == Feature1And::Absent {
+                                self.x86_feature_1_and = state;
+                            }
+                        } else if self.aarch64_feature_1_and == Feature1And::Absent {
+                            self.aarch64_feature_1_and = state;
                         }
                     }
                     Some(".text") => {
-                        self.has_endbr64 =
-                            self.has_endbr64 || bytes.windows(4).any(|w| w == ENDBR64);
-                        self.has_stack_guard_load =
-                            self.has_stack_guard_load || bytes.windows(9).any(is_stack_guard_load);
+                        if elf.header.e_machine == goblin::elf::header::EM_X86_64 {
+                            self.has_endbr64 =
+                                self.has_endbr64 || bytes.windows(4).any(|w| w == ENDBR64);
+                            self.has_stack_guard_load = self.has_stack_guard_load
+                                || bytes.windows(9).any(is_stack_guard_load);
+                        } else {
+                            self.has_bti_landing_pad = self.has_bti_landing_pad
+                                || BTI_LANDING_PADS
+                                    .iter()
+                                    .any(|pad| bytes.windows(4).any(|w| w == pad.as_slice()));
+                        }
                     }
                     _ => {}
                 }
@@ -7214,6 +7263,41 @@ impl BinariesCheck {
         }
     }
 
+    /// Annocheck's `rwx-seg` test: a `PT_LOAD` segment mapped
+    /// readable, writable and executable at once lets any write to it
+    /// become executed code. The executable-stack finding covers the
+    /// stack mapping; this covers the segments. Only linked images
+    /// carry programme headers, and only images the package arch's
+    /// dynamic linker loads are judged (a foreign-machine image is
+    /// payload for another machine); separate debuginfo is never
+    /// loaded either.
+    fn check_rwx_segment(
+        &self,
+        pkg: &Pkg,
+        pkgfile: &PkgFile,
+        info: &ReadelfInfo,
+        out: &mut Filter,
+    ) {
+        use goblin::elf::header::{ET_DYN, ET_EXEC};
+        if self.is_archive
+            || info.is_debug
+            || pkgfile.name.starts_with("/usr/lib/debug/")
+            || (info.elf_type != ET_EXEC && info.elf_type != ET_DYN)
+            || info.program_headers.is_empty()
+            || foreign_elf_machine(info.elf_machine, &pkg.arch)
+        {
+            return;
+        }
+        if info.program_headers.iter().any(|h| {
+            h.name == "LOAD"
+                && h.flags.contains('R')
+                && h.flags.contains('W')
+                && h.flags.contains('E')
+        }) {
+            add_info(out, Level::Error, pkg, "rwx-segment", &[&pkgfile.name]);
+        }
+    }
+
     /// checksec-style verification of the effective hardening state of the
     /// artifact, from the ELF headers and symbol tables rather than the
     /// compile flags: flag soup cannot catch silent downgrades (e.g. a
@@ -7417,9 +7501,9 @@ impl BinariesCheck {
         // or missing-stack-protector, whose language gate covers
         // Rust, Haskell, OCaml and gccgo but not FPC, Mono or vdso.
         let cf_unprotected = match info.x86_feature_1_and {
-            X86Feature1And::Present(f) => f & X86_FEATURE_1_IBT_SHSTK != X86_FEATURE_1_IBT_SHSTK,
-            X86Feature1And::Absent => true,
-            X86Feature1And::Unreadable => false,
+            Feature1And::Present(f) => f & X86_FEATURE_1_IBT_SHSTK != X86_FEATURE_1_IBT_SHSTK,
+            Feature1And::Absent => true,
+            Feature1And::Unreadable => false,
         };
         if info.elf_machine == goblin::elf::header::EM_X86_64
             && !is_rust
@@ -7436,6 +7520,42 @@ impl BinariesCheck {
                 Level::Warning,
                 pkg,
                 "missing-cf-protection",
+                &[&pkgfile.name],
+            );
+        }
+        // Branch protection (the AArch64 half of annocheck's
+        // control-flow audit): openSUSE's `%{optflags}` carry
+        // `-mbranch-protection=standard` on AArch64, which makes the
+        // compiler record the BTI and PAC features in
+        // `.note.gnu.property` and emit a BTI landing pad at every
+        // indirect-branch target. The finding requires both records
+        // to fall short, mirroring `missing-cf-protection`: the
+        // property alone does not prove a flagless build (it is the
+        // bitwise AND over all link inputs, so one input carrying no
+        // property clears it for the whole binary), and the landing
+        // pad is the applicability evidence that the flag reached
+        // some of the code. Same language gates as the x86 finding,
+        // and gccgo is judged like C there as here.
+        let branch_unprotected = match info.aarch64_feature_1_and {
+            Feature1And::Present(f) => f & AARCH64_FEATURE_1_BTI_PAC != AARCH64_FEATURE_1_BTI_PAC,
+            Feature1And::Absent => true,
+            Feature1And::Unreadable => false,
+        };
+        if info.elf_machine == goblin::elf::header::EM_AARCH64
+            && !is_rust
+            && !is_haskell
+            && !is_ocaml
+            && !is_fpc
+            && !is_mono_aot
+            && !is_vdso
+            && !info.has_bti_landing_pad
+            && branch_unprotected
+        {
+            add_info(
+                out,
+                Level::Warning,
+                pkg,
+                "missing-branch-protection",
                 &[&pkgfile.name],
             );
         }
@@ -7458,11 +7578,9 @@ impl BinariesCheck {
             has_fortify_symbol: has_fortify_symbol && !language_gated,
             cet_judged: info.elf_machine == goblin::elf::header::EM_X86_64 && !cet_gated,
             cet_absent: match info.x86_feature_1_and {
-                X86Feature1And::Present(f) => {
-                    f & X86_FEATURE_1_IBT_SHSTK != X86_FEATURE_1_IBT_SHSTK
-                }
-                X86Feature1And::Absent => true,
-                X86Feature1And::Unreadable => false,
+                Feature1And::Present(f) => f & X86_FEATURE_1_IBT_SHSTK != X86_FEATURE_1_IBT_SHSTK,
+                Feature1And::Absent => true,
+                Feature1And::Unreadable => false,
             },
             cet_endbr64_absent: !info.has_endbr64,
         }
@@ -7693,6 +7811,27 @@ impl BinariesCheck {
         info: &ReadelfInfo,
         out: &mut Filter,
     ) {
+        // Annocheck's textrel test is not shlib-only: a PIE
+        // executable linked with non-PIC code carries DT_TEXTREL too,
+        // and the shared-object arm below never sees it (a PIE
+        // executable is not `is_shlib`). The PT_INTERP header is the
+        // executable signal: only a dynamically linked executable
+        // carries one. A non-PIE executable (ET_EXEC) with TEXTREL is
+        // already charged by `non-position-independent-executable`,
+        // so this arm is the PIE shape only.
+        if !info.is_shlib
+            && info.has_textrel
+            && info.elf_type == goblin::elf::header::ET_DYN
+            && info.program_headers.iter().any(|h| h.name == "INTERP")
+        {
+            add_info(
+                out,
+                Level::Error,
+                pkg,
+                "executable-with-non-pic-code",
+                &[&pkgfile.name],
+            );
+        }
         if !info.is_shlib {
             self.check_soname_tail_library(pkg, pkgfile, info, out);
             return;
@@ -8976,6 +9115,7 @@ impl BinariesCheck {
         self.check_missing_debug_info_in_archive(pkg, pkgfile, info, out);
         self.check_binary_without_debuginfo(pkg, pkgfile, info, out);
         self.check_executable_stack(pkg, pkgfile, info, out);
+        self.check_rwx_segment(pkg, pkgfile, info, out);
         let hardening = self.check_hardening(pkg, pkgfile, info, out);
         self.hardening_rollup.absorb(&pkgfile.name, hardening);
         self.check_shared_library(pkg, pkgfile, info, out);
@@ -10645,8 +10785,10 @@ mod tests {
 
         let run = |name: &str, runpaths: Vec<String>| {
             let info = ReadelfInfo {
-                x86_feature_1_and: X86Feature1And::Absent,
+                x86_feature_1_and: Feature1And::Absent,
                 has_endbr64: false,
+                aarch64_feature_1_and: Feature1And::Absent,
+                has_bti_landing_pad: false,
                 has_stack_guard_load: false,
                 sections: Vec::new(),
                 program_headers: Vec::new(),
@@ -11504,7 +11646,7 @@ mod tests {
         // proves nothing either way.
         let mk_unreadable = || {
             let mut info = flagless_info(FLAGLESS_IMPORTS);
-            info.x86_feature_1_and = X86Feature1And::Unreadable;
+            info.x86_feature_1_and = Feature1And::Unreadable;
             info
         };
         let files: Vec<(&str, ReadelfInfo)> = ["/usr/bin/a", "/usr/bin/b"]
@@ -11698,7 +11840,7 @@ mod tests {
         // One file recording full IBT|SHSTK: CET was applied
         // somewhere, so it leaves the named mitigations.
         let mut with_cet = flagless_info(FLAGLESS_IMPORTS);
-        with_cet.x86_feature_1_and = X86Feature1And::Present(X86_FEATURE_1_IBT_SHSTK);
+        with_cet.x86_feature_1_and = Feature1And::Present(X86_FEATURE_1_IBT_SHSTK);
         let files: Vec<(&str, ReadelfInfo)> = vec![
             ("/usr/bin/a", flagless_info(FLAGLESS_IMPORTS)),
             ("/usr/bin/b", with_cet),
@@ -11714,7 +11856,7 @@ mod tests {
         // An unreadable note proves nothing either way: it blocks
         // the CET listing the same way.
         let mut unreadable = flagless_info(FLAGLESS_IMPORTS);
-        unreadable.x86_feature_1_and = X86Feature1And::Unreadable;
+        unreadable.x86_feature_1_and = Feature1And::Unreadable;
         let files: Vec<(&str, ReadelfInfo)> = vec![
             ("/usr/bin/a", flagless_info(FLAGLESS_IMPORTS)),
             ("/usr/bin/b", unreadable),
@@ -13159,30 +13301,30 @@ mod tests {
 
     #[test]
     fn gnu_property_feature_1_and_is_parsed() {
-        let both = gnu_property_note(&[(GNU_PROPERTY_X86_FEATURE_1_AND, 0b11)]);
+        let both = gnu_property_note(&[(GNU_PROPERTY_FEATURE_1_AND, 0b11)]);
         let info = parse_crafted_sections("cfboth", &[(".note.gnu.property", &both)]);
         assert_eq!(
             info.x86_feature_1_and,
-            X86Feature1And::Present(X86_FEATURE_1_IBT_SHSTK)
+            Feature1And::Present(X86_FEATURE_1_IBT_SHSTK)
         );
-        let shstk_only = gnu_property_note(&[(GNU_PROPERTY_X86_FEATURE_1_AND, 0b10)]);
+        let shstk_only = gnu_property_note(&[(GNU_PROPERTY_FEATURE_1_AND, 0b10)]);
         let info = parse_crafted_sections("cfshstk", &[(".note.gnu.property", &shstk_only)]);
         assert_eq!(
             info.x86_feature_1_and,
-            X86Feature1And::Present(X86_FEATURE_1_SHSTK)
+            Feature1And::Present(X86_FEATURE_1_SHSTK)
         );
         // A present-but-zero value is a real value, not an absence.
-        let zero = gnu_property_note(&[(GNU_PROPERTY_X86_FEATURE_1_AND, 0)]);
+        let zero = gnu_property_note(&[(GNU_PROPERTY_FEATURE_1_AND, 0)]);
         let info = parse_crafted_sections("cfzero", &[(".note.gnu.property", &zero)]);
-        assert_eq!(info.x86_feature_1_and, X86Feature1And::Present(0));
+        assert_eq!(info.x86_feature_1_and, Feature1And::Present(0));
         // A property note without FEATURE_1_AND (here the x86
         // FEATURE_2_USED property) leaves the state Absent, as does a
         // binary with no property section at all.
         let other = gnu_property_note(&[(0xc000_0001, 0b11)]);
         let info = parse_crafted_sections("cfother", &[(".note.gnu.property", &other)]);
-        assert_eq!(info.x86_feature_1_and, X86Feature1And::Absent);
+        assert_eq!(info.x86_feature_1_and, Feature1And::Absent);
         let info = parse_crafted_sections("cfnone", &[(".text", b"code")]);
-        assert_eq!(info.x86_feature_1_and, X86Feature1And::Absent);
+        assert_eq!(info.x86_feature_1_and, Feature1And::Absent);
     }
 
     #[test]
@@ -13274,21 +13416,18 @@ mod tests {
         desc.extend_from_slice(&0xc000_0001u32.to_le_bytes()); // FEATURE_2_USED
         desc.extend_from_slice(&4u32.to_le_bytes());
         desc.extend_from_slice(&0xaaaa_aaaau32.to_le_bytes());
-        desc.extend_from_slice(&GNU_PROPERTY_X86_FEATURE_1_AND.to_le_bytes());
+        desc.extend_from_slice(&GNU_PROPERTY_FEATURE_1_AND.to_le_bytes());
         desc.extend_from_slice(&4u32.to_le_bytes());
         desc.extend_from_slice(&X86_FEATURE_1_IBT_SHSTK.to_le_bytes());
         let note = gnu_note_with_desc(&desc, None);
         assert_eq!(
-            parse_x86_feature_1_and(&note, false),
-            X86Feature1And::Present(X86_FEATURE_1_IBT_SHSTK)
+            parse_feature_1_and(&note, false),
+            Feature1And::Present(X86_FEATURE_1_IBT_SHSTK)
         );
         // Read with the ELF64 stride, the walk lands mid-entry and
         // the misread entry's declared size overruns the desc: the
         // state is unreadable (damage proves nothing), not absent.
-        assert_eq!(
-            parse_x86_feature_1_and(&note, true),
-            X86Feature1And::Unreadable
-        );
+        assert_eq!(parse_feature_1_and(&note, true), Feature1And::Unreadable);
     }
 
     #[test]
@@ -13296,32 +13435,23 @@ mod tests {
         // The entry declares 8 data bytes but the desc ends after 2:
         // the value is cut off, which is damage, not absence.
         let mut desc = Vec::new();
-        desc.extend_from_slice(&GNU_PROPERTY_X86_FEATURE_1_AND.to_le_bytes());
+        desc.extend_from_slice(&GNU_PROPERTY_FEATURE_1_AND.to_le_bytes());
         desc.extend_from_slice(&8u32.to_le_bytes());
         desc.extend_from_slice(&[0x03, 0x00]);
         let note = gnu_note_with_desc(&desc, None);
-        assert_eq!(
-            parse_x86_feature_1_and(&note, true),
-            X86Feature1And::Unreadable
-        );
+        assert_eq!(parse_feature_1_and(&note, true), Feature1And::Unreadable);
         // An entry too small to hold the feature word at all.
         let mut desc = Vec::new();
-        desc.extend_from_slice(&GNU_PROPERTY_X86_FEATURE_1_AND.to_le_bytes());
+        desc.extend_from_slice(&GNU_PROPERTY_FEATURE_1_AND.to_le_bytes());
         desc.extend_from_slice(&2u32.to_le_bytes());
         desc.extend_from_slice(&[0x03, 0x00]);
         let note = gnu_note_with_desc(&desc, None);
-        assert_eq!(
-            parse_x86_feature_1_and(&note, true),
-            X86Feature1And::Unreadable
-        );
+        assert_eq!(parse_feature_1_and(&note, true), Feature1And::Unreadable);
         // A note header claiming a desc longer than the section: the
         // property may have sat in the lost tail.
         let desc = vec![0u8; 8];
         let note = gnu_note_with_desc(&desc, Some(1024));
-        assert_eq!(
-            parse_x86_feature_1_and(&note, true),
-            X86Feature1And::Unreadable
-        );
+        assert_eq!(parse_feature_1_and(&note, true), Feature1And::Unreadable);
         // A non-feature entry whose declared size overruns the desc
         // ends the walk the same way: the feature entry could have
         // sat in the lost tail.
@@ -13330,10 +13460,7 @@ mod tests {
         desc.extend_from_slice(&64u32.to_le_bytes());
         desc.extend_from_slice(&[0x03, 0x00, 0x00, 0x00]);
         let note = gnu_note_with_desc(&desc, None);
-        assert_eq!(
-            parse_x86_feature_1_and(&note, true),
-            X86Feature1And::Unreadable
-        );
+        assert_eq!(parse_feature_1_and(&note, true), Feature1And::Unreadable);
     }
 
     #[test]
@@ -13355,19 +13482,19 @@ mod tests {
         assert!(lines[0].contains(" W: "), "Warning level: {}", lines[0]);
         // Both features recorded: quiet.
         let mut info = syn_info();
-        info.x86_feature_1_and = X86Feature1And::Present(X86_FEATURE_1_IBT_SHSTK);
+        info.x86_feature_1_and = Feature1And::Present(X86_FEATURE_1_IBT_SHSTK);
         assert!(lines_for(&run(&info), "missing-cf-protection").is_empty());
         // One feature only (SHSTK): the missing IBT still fires.
         let mut info = syn_info();
-        info.x86_feature_1_and = X86Feature1And::Present(X86_FEATURE_1_SHSTK);
+        info.x86_feature_1_and = Feature1And::Present(X86_FEATURE_1_SHSTK);
         assert_eq!(lines_for(&run(&info), "missing-cf-protection").len(), 1);
         // A present-but-zero value records neither feature: fires.
         let mut info = syn_info();
-        info.x86_feature_1_and = X86Feature1And::Present(0);
+        info.x86_feature_1_and = Feature1And::Present(0);
         assert_eq!(lines_for(&run(&info), "missing-cf-protection").len(), 1);
         // A truncated property entry proves nothing either way: quiet.
         let mut info = syn_info();
-        info.x86_feature_1_and = X86Feature1And::Unreadable;
+        info.x86_feature_1_and = Feature1And::Unreadable;
         assert!(lines_for(&run(&info), "missing-cf-protection").is_empty());
         // ENDBR64 in .text: the code was compiled with the flag and
         // the property was cleared at link time by an input carrying
@@ -13378,7 +13505,7 @@ mod tests {
         assert!(lines_for(&run(&info), "missing-cf-protection").is_empty());
         let mut info = syn_info();
         info.has_endbr64 = true;
-        info.x86_feature_1_and = X86Feature1And::Present(X86_FEATURE_1_SHSTK);
+        info.x86_feature_1_and = Feature1And::Present(X86_FEATURE_1_SHSTK);
         assert!(lines_for(&run(&info), "missing-cf-protection").is_empty());
         // Other architectures have no x86 property semantics.
         let mut info = syn_info();
@@ -13388,6 +13515,209 @@ mod tests {
         let mut info = syn_info();
         info.is_rust = true;
         assert!(lines_for(&run(&info), "missing-cf-protection").is_empty());
+    }
+
+    /// Annocheck's branch-protection test, the AArch64 half of the
+    /// control-flow audit `missing-cf-protection` covers for x86_64:
+    /// a binary whose `.note.gnu.property` lacks both the BTI and PAC
+    /// bits and whose `.text` holds no BTI landing pad fires once, at
+    /// Warning.
+    #[test]
+    fn missing_branch_protection_fires_and_stays_quiet() {
+        let config = test_config();
+        let check = BinariesCheck::with_tool_dir(&config, None);
+        let pkg = synthetic_pkg("testpkg", "aarch64", vec![]);
+        let pkgfile = syn_file("/usr/bin/probe", "ELF 64-bit LSB pie executable");
+        let run = |info: &ReadelfInfo| {
+            let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
+            check.check_hardening(&pkg, &pkgfile, info, &mut out);
+            out.results().to_vec()
+        };
+        // AArch64 shape: ET_DYN with no property recorded and no BTI
+        // landing pad. Fires exactly once, at Warning.
+        let mk_aarch = || {
+            let mut info = syn_info();
+            info.elf_type = goblin::elf::header::ET_DYN;
+            info.elf_machine = goblin::elf::header::EM_AARCH64;
+            info
+        };
+        let aarch = mk_aarch();
+        let results = run(&aarch);
+        let lines = lines_for(&results, "missing-branch-protection");
+        assert_eq!(lines.len(), 1, "must fire once: {results:?}");
+        assert!(lines[0].contains(" W: "), "Warning level: {}", lines[0]);
+        // Both features recorded: quiet.
+        let mut info = mk_aarch();
+        info.aarch64_feature_1_and = Feature1And::Present(AARCH64_FEATURE_1_BTI_PAC);
+        assert!(lines_for(&run(&info), "missing-branch-protection").is_empty());
+        // One feature only (PAC): the missing BTI still fires.
+        let mut info = mk_aarch();
+        info.aarch64_feature_1_and = Feature1And::Present(AARCH64_FEATURE_1_PAC);
+        assert_eq!(lines_for(&run(&info), "missing-branch-protection").len(), 1);
+        // A present-but-zero value records neither feature: fires.
+        let mut info = mk_aarch();
+        info.aarch64_feature_1_and = Feature1And::Present(0);
+        assert_eq!(lines_for(&run(&info), "missing-branch-protection").len(), 1);
+        // A truncated property entry proves nothing either way: quiet.
+        let mut info = mk_aarch();
+        info.aarch64_feature_1_and = Feature1And::Unreadable;
+        assert!(lines_for(&run(&info), "missing-branch-protection").is_empty());
+        // A BTI landing pad in .text: the code was compiled with the
+        // flag and the property was cleared at link time by an input
+        // carrying none — rebuilding cannot restore it, so the finding
+        // stays quiet with no property and with a partial property
+        // alike.
+        let mut info = mk_aarch();
+        info.has_bti_landing_pad = true;
+        assert!(lines_for(&run(&info), "missing-branch-protection").is_empty());
+        let mut info = mk_aarch();
+        info.has_bti_landing_pad = true;
+        info.aarch64_feature_1_and = Feature1And::Present(AARCH64_FEATURE_1_PAC);
+        assert!(lines_for(&run(&info), "missing-branch-protection").is_empty());
+        // x86_64 binaries have no AArch64 property semantics.
+        let info = syn_info();
+        assert!(lines_for(&run(&info), "missing-branch-protection").is_empty());
+        // Rust binaries do not emit the property for their own code.
+        let mut info = mk_aarch();
+        info.is_rust = true;
+        assert!(lines_for(&run(&info), "missing-branch-protection").is_empty());
+        // Free Pascal output carries no branch-protection record.
+        let mut info = mk_aarch();
+        info.sections = vec![vec![sec(".fpcdata")]];
+        assert!(lines_for(&run(&info), "missing-branch-protection").is_empty());
+        // The kernel vdso is hand-written assembly, not `%{optflags}`.
+        let pkgfile = syn_file(
+            "/usr/lib/modules/6.10/vdso/vdso64.so",
+            "ELF 64-bit LSB shared object",
+        );
+        let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
+        check.check_hardening(&pkg, &pkgfile, &aarch, &mut out);
+        assert!(
+            lines_for(out.results(), "missing-branch-protection").is_empty(),
+            "vdso must stay quiet"
+        );
+    }
+
+    /// Annocheck's `rwx-seg` test: a `PT_LOAD` segment mapped
+    /// readable, writable and executable at once fires once, at Error.
+    #[test]
+    fn rwx_segment_fires_and_stays_quiet() {
+        let config = test_config();
+        let check = BinariesCheck::with_tool_dir(&config, None);
+        let pkg = synthetic_pkg("testpkg", "x86_64", vec![]);
+        let pkgfile = syn_file("/usr/bin/tool", "ELF 64-bit LSB executable, x86-64");
+        let run = |elf_type: u16, headers: Vec<ElfProgramHeader>| {
+            let mut info = syn_info();
+            info.elf_type = elf_type;
+            info.program_headers = headers;
+            let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
+            check.check_rwx_segment(&pkg, &pkgfile, &info, &mut out);
+            out.results().to_vec()
+        };
+        use goblin::elf::header::{EM_SPARC, EM_X86_64, ET_DYN, ET_EXEC, ET_REL};
+        // RWX LOAD fires exactly once, at Error.
+        let results = run(ET_EXEC, vec![phdr("LOAD", "RWE")]);
+        let lines = lines_for(&results, "rwx-segment");
+        assert_eq!(lines.len(), 1, "must fire once: {results:?}");
+        assert!(lines[0].contains(" E: "), "Error level: {}", lines[0]);
+        // RW and RX LOADs stay quiet, as does a second RWE-free shape.
+        assert!(lines_for(&run(ET_EXEC, vec![phdr("LOAD", "RW ")],), "rwx-segment").is_empty());
+        assert!(lines_for(&run(ET_DYN, vec![phdr("LOAD", "R E")]), "rwx-segment").is_empty());
+        assert!(lines_for(&run(ET_EXEC, vec![]), "rwx-segment").is_empty());
+        // A relocatable object carries no linked segments to judge.
+        let mut info = syn_info();
+        info.elf_type = ET_REL;
+        info.program_headers = vec![phdr("LOAD", "RWE")];
+        let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
+        check.check_rwx_segment(&pkg, &pkgfile, &info, &mut out);
+        assert!(
+            lines_for(out.results(), "rwx-segment").is_empty(),
+            "ET_REL must stay quiet"
+        );
+        // A foreign-machine image is payload for another machine.
+        let mut info = syn_info();
+        info.elf_type = ET_EXEC;
+        info.elf_machine = EM_SPARC;
+        info.program_headers = vec![phdr("LOAD", "RWE")];
+        let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
+        check.check_rwx_segment(&pkg, &pkgfile, &info, &mut out);
+        assert!(
+            lines_for(out.results(), "rwx-segment").is_empty(),
+            "foreign machine must stay quiet"
+        );
+        // Separate debuginfo is never loaded.
+        let mut info = syn_info();
+        info.elf_type = ET_EXEC;
+        info.elf_machine = EM_X86_64;
+        info.is_debug = true;
+        info.program_headers = vec![phdr("LOAD", "RWE")];
+        let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
+        check.check_rwx_segment(&pkg, &pkgfile, &info, &mut out);
+        assert!(
+            lines_for(out.results(), "rwx-segment").is_empty(),
+            "debuginfo must stay quiet"
+        );
+    }
+
+    /// Annocheck's textrel test, the PIE-executable shape: DT_TEXTREL
+    /// on a dynamically linked executable that is not a shared object
+    /// fires `executable-with-non-pic-code` once, at Error.
+    #[test]
+    fn executable_with_non_pic_code_fires_and_stays_quiet() {
+        let config = test_config();
+        let check = BinariesCheck::with_tool_dir(&config, None);
+        let pkg = synthetic_pkg("testpkg", "x86_64", vec![]);
+        let pkgfile = syn_file("/usr/bin/probe", "ELF 64-bit LSB pie executable");
+        let run = |info: &ReadelfInfo| {
+            let mut out = Filter::new(&config, Color::for_tty(false)).unwrap();
+            check.check_shared_library(&pkg, &pkgfile, info, &mut out);
+            out.results().to_vec()
+        };
+        // PIE executable (ET_DYN, PT_INTERP, not .so-named) with
+        // DT_TEXTREL: fires exactly once, at Error.
+        let mk_pie = || {
+            let mut info = syn_info();
+            info.elf_type = goblin::elf::header::ET_DYN;
+            info.has_textrel = true;
+            info.program_headers = vec![phdr("INTERP", "R  ")];
+            info
+        };
+        let pie = mk_pie();
+        let results = run(&pie);
+        let lines = lines_for(&results, "executable-with-non-pic-code");
+        assert_eq!(lines.len(), 1, "must fire once: {results:?}");
+        assert!(lines[0].contains(" E: "), "Error level: {}", lines[0]);
+        assert!(
+            lines_for(&results, "shlib-with-non-pic-code").is_empty(),
+            "the shlib arm must not fire for an executable: {results:?}"
+        );
+        // No PT_INTERP: not provably an executable, stays quiet.
+        let mut info = mk_pie();
+        info.program_headers = Vec::new();
+        assert!(
+            lines_for(&run(&info), "executable-with-non-pic-code").is_empty(),
+            "no INTERP must stay quiet: {:?}",
+            run(&info)
+        );
+        // A non-PIE executable with TEXTREL is already charged by
+        // `non-position-independent-executable`, not here.
+        let mut info = mk_pie();
+        info.elf_type = goblin::elf::header::ET_EXEC;
+        assert!(lines_for(&run(&info), "executable-with-non-pic-code").is_empty());
+        // Without TEXTREL nothing fires.
+        let mut info = mk_pie();
+        info.has_textrel = false;
+        assert!(lines_for(&run(&info), "executable-with-non-pic-code").is_empty());
+        // Control: the shared-object arm is unchanged.
+        let mut info = syn_info();
+        info.is_shlib = true;
+        info.has_textrel = true;
+        let results = run(&info);
+        assert_eq!(lines_for(&results, "shlib-with-non-pic-code").len(), 1);
+        assert!(
+            lines_for(&results, "executable-with-non-pic-code").is_empty(),
+            "the executable arm must not fire for a shlib: {results:?}"
+        );
     }
 
     #[test]
@@ -14283,8 +14613,10 @@ description = "explicit priority string bypasses the system crypto policy"
 
         let run = |sections: Vec<Vec<ElfSection>>| {
             let info = ReadelfInfo {
-                x86_feature_1_and: X86Feature1And::Absent,
+                x86_feature_1_and: Feature1And::Absent,
                 has_endbr64: false,
+                aarch64_feature_1_and: Feature1And::Absent,
+                has_bti_landing_pad: false,
                 has_stack_guard_load: false,
                 sections,
                 program_headers: Vec::new(),
@@ -14442,8 +14774,10 @@ description = "explicit priority string bypasses the system crypto policy"
 
     fn syn_info() -> ReadelfInfo {
         ReadelfInfo {
-            x86_feature_1_and: X86Feature1And::Absent,
+            x86_feature_1_and: Feature1And::Absent,
             has_endbr64: false,
+            aarch64_feature_1_and: Feature1And::Absent,
+            has_bti_landing_pad: false,
             has_stack_guard_load: false,
             sections: Vec::new(),
             program_headers: Vec::new(),
