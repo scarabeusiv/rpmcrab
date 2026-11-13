@@ -294,6 +294,9 @@ pub fn build(name: &str, config: &Config) -> Option<Box<dyn Check>> {
         "SystemdTmpfilesCheck" => Some(Box::new(
             crate::checks::systemd_tmpfiles::SystemdTmpfilesCheck::new(config),
         )),
+        "SystemdUsersCheck" => Some(Box::new(
+            crate::checks::systemd_users::SystemdUsersCheck::new(config),
+        )),
         "SysVInitOnSystemdCheck" => Some(Box::new(
             crate::checks::sysv_init_on_systemd::SysVInitOnSystemdCheck::new(config),
         )),

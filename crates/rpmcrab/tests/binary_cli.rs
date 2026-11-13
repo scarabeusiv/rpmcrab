@@ -1941,7 +1941,7 @@ fn errors_only_header_reports_configured_check_count() {
     assert_eq!(out.status.code(), Some(64));
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("checks: 46, packages: 1"),
+        stdout.contains("checks: 47, packages: 1"),
         "header reports the configured count, not the run count: {stdout}"
     );
 }
@@ -2025,7 +2025,7 @@ fn errors_only_json_finding_set_matches_full_run() {
     let eo_doc: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&eo.stdout)).expect("JSON");
     assert_eq!(full_doc["findings"], eo_doc["findings"]);
-    assert_eq!(eo_doc["checks"], 46);
+    assert_eq!(eo_doc["checks"], 47);
     assert_eq!(
         eo_doc["summary"]["exit_code"].as_i64(),
         eo.status.code().map(i64::from)

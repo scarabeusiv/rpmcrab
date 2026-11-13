@@ -3317,7 +3317,7 @@ fn sysusers_declared(text: &str) -> (HashSet<String>, HashSet<String>) {
 /// not install with this package, so it is no evidence about this
 /// package's intent, and neither a `user()` / `group()` Requires nor
 /// a Provides credits here -- the shipped snippet is the declaration.
-fn own_sysusers_declared(pkg: &Pkg) -> (HashSet<String>, HashSet<String>) {
+pub(crate) fn own_sysusers_declared(pkg: &Pkg) -> (HashSet<String>, HashSet<String>) {
     let mut users = HashSet::new();
     let mut groups = HashSet::new();
     for f in &pkg.files {

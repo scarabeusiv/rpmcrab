@@ -52,6 +52,7 @@ const STAGED: &[&str] = &[
     include_str!("../data/descriptions/SysVInitOnSystemdCheck.toml"),
     include_str!("../data/descriptions/SystemdInstallCheck.toml"),
     include_str!("../data/descriptions/SystemdTmpfilesCheck.toml"),
+    include_str!("../data/descriptions/SystemdUsersCheck.toml"),
     include_str!("../data/descriptions/TagsCheck.toml"),
     include_str!("../data/descriptions/TmpFilesCheck.toml"),
     include_str!("../data/descriptions/Variables.toml"),
@@ -291,7 +292,7 @@ mod tests {
         );
     }
 
-    /// The 47 staged description files, byte-pinned: any edit, truncation,
+    /// The 48 staged description files, byte-pinned: any edit, truncation,
     /// or bad rebase merge changes a hash. Provenance of each file against
     /// the pinned reference (`84848c0`) is documented in
     /// `data/descriptions/README.md`.
@@ -318,7 +319,7 @@ mod tests {
             ),
             (
                 "BinariesCheck.toml",
-                "6c2447245de3ed9ac1a5bb55debfd6a7372ad9410ce03f42e435f1f514ec54d6",
+                "388935a880ebe7a5bc39d09889ce43ad6e1cbdef0fdac8f892ebf4e266e1f45b",
             ),
             (
                 "BrandingPolicyCheck.toml",
@@ -459,6 +460,10 @@ mod tests {
             (
                 "SystemdTmpfilesCheck.toml",
                 "5817ac6b70ca3e605265eaad2d7e92b1abebd983ce061fcb719bcb397e9aa8ed",
+            ),
+            (
+                "SystemdUsersCheck.toml",
+                "df0dbb061f10d9412386f932e8828326b2606cad1f78593ee2bb9dbc136bb26c",
             ),
             (
                 "TagsCheck.toml",

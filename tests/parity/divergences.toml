@@ -4455,6 +4455,34 @@ since = "0.1.0"
 
 [[divergence]]
 case = "global"
+check = "systemd-unit-unknown-user"
+kind = "behaviour"
+reason = "New port-only Warning with no reference counterpart: a .service or .socket unit directly under a system or user unit directory whose User= (or SocketUser=) names an account declared nowhere emits W systemd-unit-unknown-user. An account counts as declared when the package's own sysusers.d snippet declares it, the package Requires a user(<name>) capability for it, it is listed in the StandardUsers table, or it is a numeric id. Units with DynamicUser=yes are skipped whole (their accounts are allocated at runtime), as are .wants/.requires symlinks (they name the same unit twice). No Factory corpus census was run for this POC entry; the firing shape is pinned by unit tests only. Pinned by unknown_user_and_group_in_unit_fire, sysusers_declared_account_in_unit_is_quiet, required_account_in_unit_is_quiet, standard_account_in_unit_is_quiet and numeric_user_in_unit_is_quiet in systemd_users.rs. Its staged description lives in crates/rpmcrab-core/data/descriptions/SystemdUsersCheck.toml."
+since = "0.4.3"
+
+[[divergence]]
+case = "global"
+check = "systemd-unit-unknown-group"
+kind = "behaviour"
+reason = "New port-only Warning with no reference counterpart: a .service or .socket unit directly under a system or user unit directory whose Group=, SupplementaryGroups= or SocketGroup= names a group declared nowhere emits W systemd-unit-unknown-group. A group counts as declared when the package's own sysusers.d snippet declares it (a g line, or a u line, which also declares the like-named primary group), the package Requires a group(<name>) capability for it, it is listed in the StandardGroups table, or it is a numeric id. Same scope as the user arm: DynamicUser=yes units and .wants/.requires symlinks are skipped. No Factory corpus census was run for this POC entry; the firing shape is pinned by unit tests only. Pinned by unknown_user_and_group_in_unit_fire, sysusers_declared_account_in_unit_is_quiet, required_account_in_unit_is_quiet, standard_account_in_unit_is_quiet and numeric_user_in_unit_is_quiet in systemd_users.rs. Its staged description lives in crates/rpmcrab-core/data/descriptions/SystemdUsersCheck.toml."
+since = "0.4.3"
+
+[[divergence]]
+case = "global"
+check = "dbus-policy-unknown-user"
+kind = "behaviour"
+reason = "New port-only Warning with no reference counterpart: a D-Bus system policy file whose <policy user=...> names a user declared nowhere emits W dbus-policy-unknown-user. The same declared-ness rules as the unit arms apply (own sysusers.d, user(<name>) Requires, StandardUsers table, numeric id); at_console and context=default policies name no account. A malformed file is skipped here and already charged by DBusPolicyCheck as dbus-parsing-exception. No Factory corpus census was run for this POC entry; the firing shape is pinned by unit tests only. Pinned by dbus_policy_subjects_fire_and_stay_quiet in systemd_users.rs and policy_subjects_collects_user_and_group in dbus_policy.rs. Its staged description lives in crates/rpmcrab-core/data/descriptions/SystemdUsersCheck.toml."
+since = "0.4.3"
+
+[[divergence]]
+case = "global"
+check = "dbus-policy-unknown-group"
+kind = "behaviour"
+reason = "New port-only Warning with no reference counterpart: a D-Bus system policy file whose <policy group=...> names a group declared nowhere emits W dbus-policy-unknown-group. The same declared-ness rules as the unit arms apply (own sysusers.d, group(<name>) Requires, StandardGroups table, numeric id). No Factory corpus census was run for this POC entry; the firing shape is pinned by unit tests only. Pinned by dbus_policy_subjects_fire_and_stay_quiet in systemd_users.rs and policy_subjects_collects_user_and_group in dbus_policy.rs. Its staged description lives in crates/rpmcrab-core/data/descriptions/SystemdUsersCheck.toml."
+since = "0.4.3"
+
+[[divergence]]
+case = "global"
 check = "TagsCheck"
 kind = "detail"
 reason = "useless-provides carries the upstream rpmlint#427 reword ahead of the pinned reference, per the fix-in-port rule. The staged text is scoped to what the check fires on — a name in both unversioned and versioned form only. The reword also drops the earlier text's claim that the redundant provide is manual (false for dependency-generator pairs, where no manual provide exists) and documents the level split for those pairs; the split itself is ledgered separately as a severity divergence. Provenance: crates/rpmcrab-core/data/descriptions/README.md."

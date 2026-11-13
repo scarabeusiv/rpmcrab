@@ -27,7 +27,7 @@ impl DBusPolicyCheck {
     }
 
     /// True when `path` is a D-Bus system policy file.
-    fn is_policy_file(path: &str) -> bool {
+    pub(crate) fn is_policy_file(path: &str) -> bool {
         DBUS_DIRECTORIES.iter().any(|d| path.starts_with(d))
     }
 }
@@ -114,6 +114,77 @@ fn policy_subject_scoped(e: &quick_xml::events::BytesStart<'_>) -> bool {
     e.attributes()
         .filter_map(|a| a.ok())
         .any(|a| matches!(a.key.as_ref(), "user" | "group" | "at_console"))
+}
+
+/// One subject a `<policy>` element scopes its rules to: whether it
+/// is a group, and the account name. `at_console` scopes to no
+/// account and is not a subject; `context="default"` and bare
+/// `<policy>` elements name none either.
+pub(crate) struct PolicySubject {
+    pub(crate) is_group: bool,
+    pub(crate) name: String,
+}
+
+/// Record the `user`/`group` subject of one `<policy>` element, if
+/// it names one.
+fn collect_policy_subject(
+    e: &quick_xml::events::BytesStart<'_>,
+    subjects: &mut Vec<PolicySubject>,
+) -> Result<(), String> {
+    if e.name().as_ref() != "policy" {
+        return Ok(());
+    }
+    for attr in e.attributes().filter_map(|a| a.ok()) {
+        if matches!(attr.key.as_ref(), "user" | "group") {
+            let val = attr
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .map(|v| v.into_owned())
+                .map_err(|err| err.to_string())?;
+            subjects.push(PolicySubject {
+                is_group: attr.key.as_ref() == "group",
+                name: val,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// The subjects of a policy file's `<policy>` elements, in document
+/// order. A malformed file is an error, and the caller skips it: the
+/// parse failure itself is already charged by `DBusPolicyCheck` as
+/// `dbus-parsing-exception`, so no finding is lost.
+pub(crate) fn policy_subjects(content: &str) -> Result<Vec<PolicySubject>, String> {
+    let mut reader = Reader::from_str(content);
+    reader.config_mut().trim_text(true);
+    let mut subjects = Vec::new();
+    let mut buf = Vec::new();
+    // Track open elements so unclosed tags are a parse error, like minidom.
+    let mut open: Vec<String> = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => {
+                open.push(e.name().as_ref().to_owned());
+                collect_policy_subject(e, &mut subjects)?;
+            }
+            Ok(Event::Empty(ref e)) => {
+                collect_policy_subject(e, &mut subjects)?;
+            }
+            Ok(Event::End(ref e)) => match open.pop() {
+                Some(name) if name == e.name().as_ref() => {}
+                _ => return Err("mismatched closing tag".to_string()),
+            },
+            Ok(Event::Eof) => {
+                if !open.is_empty() {
+                    return Err("unclosed elements at end of input".to_string());
+                }
+                break;
+            }
+            Err(e) => return Err(e.to_string()),
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(subjects)
 }
 
 /// The findings for one policy file's content: `(level, finding, detail)`.
@@ -489,6 +560,40 @@ mod tests {
             "/usr/share/dbus-1/system.d/foo.conf"
         ));
         assert!(!DBusPolicyCheck::is_policy_file("/etc/foo.conf"));
+    }
+
+    #[test]
+    fn policy_subjects_collects_user_and_group() {
+        let xml = r#"<busconfig>
+            <policy user="root"><allow own="org.foo.Bar"/></policy>
+            <policy group="audio"><allow send_interface="org.foo.Bar"/></policy>
+            <policy context="default"><allow own="org.foo.Baz"/></policy>
+            <policy at_console="true"><allow send_interface="org.foo.Qux"/></policy>
+            <policy><allow own="org.foo.Bare"/></policy>
+        </busconfig>"#;
+        let subjects = policy_subjects(xml).expect("parse");
+        let pairs: Vec<(bool, &str)> = subjects
+            .iter()
+            .map(|s| (s.is_group, s.name.as_str()))
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![(false, "root"), (true, "audio")],
+            "only user/group subjects count, in document order"
+        );
+    }
+
+    #[test]
+    fn policy_subjects_empty_for_subject_free_file() {
+        let xml = r#"<busconfig><policy context="default">
+            <allow own="org.foo.Bar"/>
+        </policy></busconfig>"#;
+        assert!(policy_subjects(xml).expect("parse").is_empty());
+    }
+
+    #[test]
+    fn policy_subjects_malformed_file_is_an_error() {
+        assert!(policy_subjects(r#"<busconfig><policy user="root">"#).is_err());
     }
 
     #[test]

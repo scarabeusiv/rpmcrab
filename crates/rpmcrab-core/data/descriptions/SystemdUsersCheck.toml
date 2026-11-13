@@ -1,0 +1,37 @@
+systemd-unit-unknown-user="""
+The systemd unit runs as a user that is declared nowhere: the
+package ships no sysusers.d snippet declaring it, requires no
+`user(<name>)` capability for it, and it is not one of the
+distribution's standard users. The service fails to start when the
+account does not exist. Declare the account with a sysusers.d
+snippet shipped by the package (and the matching
+`%sysusers_requires` / `user(<name>)` Requires), or fix the
+`User=` value.
+"""
+systemd-unit-unknown-group="""
+The systemd unit runs with a group that is declared nowhere: the
+package ships no sysusers.d snippet declaring it, requires no
+`group(<name>)` capability for it, and it is not one of the
+distribution's standard groups. Declare the account with a
+sysusers.d snippet shipped by the package (a `g` line, or a `u`
+line, which also declares the like-named primary group), or fix
+the `Group=` / `SupplementaryGroups=` value.
+"""
+dbus-policy-unknown-user="""
+The D-Bus policy scopes its rules to a user that is declared
+nowhere: the package ships no sysusers.d snippet declaring it,
+requires no `user(<name>)` capability for it, and it is not one
+of the distribution's standard users. The policy matches nobody
+when the account does not exist. Declare the account with a
+sysusers.d snippet shipped by the package, or fix the `user`
+attribute.
+"""
+dbus-policy-unknown-group="""
+The D-Bus policy scopes its rules to a group that is declared
+nowhere: the package ships no sysusers.d snippet declaring it,
+requires no `group(<name>)` capability for it, and it is not one
+of the distribution's standard groups. The policy matches nobody
+when the account does not exist. Declare the account with a
+sysusers.d snippet shipped by the package, or fix the `group`
+attribute.
+"""

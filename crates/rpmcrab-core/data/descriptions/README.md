@@ -160,6 +160,11 @@ Provenance, verified against the pinned reference (`84848c0`):
 - `CMakeConfigCheck.toml` — a port-only file: the reference has no
   CMakeConfigCheck, so its one entry (`cmake-dangling-imported-location`)
   is written for the port. Ledgered in `tests/parity/divergences.toml`.
+- `SystemdUsersCheck.toml` — a port-only file: the reference has no
+  SystemdUsersCheck, so its four entries (`systemd-unit-unknown-user`,
+  `systemd-unit-unknown-group`, `dbus-policy-unknown-user`,
+  `dbus-policy-unknown-group`) are written for the port. Ledgered in
+  `tests/parity/divergences.toml`.
 - `SELinuxIndependentModuleCheck.toml` — the reference file, with the
   `selinux-incorrect-if-file-location` entry reworded to state the layer
   directories the port credits (the devel Makefile collects interfaces

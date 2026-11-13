@@ -43,6 +43,7 @@ pub mod spec;
 pub mod suid_permissions;
 pub mod systemd_install;
 pub mod systemd_tmpfiles;
+pub mod systemd_users;
 pub mod sysv_init_on_systemd;
 pub mod tags;
 pub mod tmpfiles;
