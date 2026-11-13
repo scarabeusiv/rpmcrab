@@ -19,7 +19,8 @@
 //! system and user unit directories; tmpfiles.d `user:group` fields
 //! are not judged here (they name file owners, judged by
 //! `non-standard-uid` / `non-standard-gid`), and units with
-//! `DynamicUser=yes` are skipped whole — their accounts are allocated
+//! `DynamicUser=` set to a true boolean (`1`/`yes`/`true`/`on`,
+//! case-insensitive) are skipped whole — their accounts are allocated
 //! at runtime, not declared anywhere.
 
 use std::collections::HashSet;
@@ -48,14 +49,28 @@ struct UnitRef {
     name: String,
 }
 
+/// Whether `value` is a systemd true boolean: `1`, `yes`, `true` or
+/// `on`, case-insensitive (systemd.syntax(7)). Only the first token
+/// counts, so a trailing `#`/`;` comment is ignored.
+fn is_true_boolean(value: &str) -> bool {
+    let Some(first) = value.split_whitespace().next() else {
+        return false;
+    };
+    first == "1"
+        || first.eq_ignore_ascii_case("yes")
+        || first.eq_ignore_ascii_case("true")
+        || first.eq_ignore_ascii_case("on")
+}
+
 /// The user/group references in a unit file's content, in file order.
 /// Only `[Service]` `User=`/`Group=`/`SupplementaryGroups=` and
 /// `[Socket]` `SocketUser=`/`SocketGroup=` name accounts. A value is
 /// read as whitespace-separated tokens (a trailing `#`/`;` comment
 /// ends the tokens; a token carrying a `%` specifier cannot be
 /// resolved statically and is skipped). A file with
-/// `DynamicUser=yes` names no static account: its references are
-/// dropped whole.
+/// `DynamicUser=` set to a true boolean (`1`/`yes`/`true`/`on`,
+/// case-insensitive, per systemd.syntax(7)) names no static account:
+/// its references are dropped whole.
 fn unit_refs(content: &str) -> Vec<UnitRef> {
     let mut refs = Vec::new();
     let mut section = "";
@@ -74,10 +89,7 @@ fn unit_refs(content: &str) -> Vec<UnitRef> {
         };
         let key = key.trim();
         let value = value.trim();
-        if section == "Service"
-            && key == "DynamicUser"
-            && value.split_whitespace().next() == Some("yes")
-        {
+        if section == "Service" && key == "DynamicUser" && is_true_boolean(value) {
             dynamic_user = true;
         }
         let (directive, is_group, multi) = match (section, key) {
@@ -309,8 +321,31 @@ mod tests {
 
     #[test]
     fn unit_refs_dynamic_user_skips_the_file() {
-        let content = "[Service]\nDynamicUser=yes\nUser=foosvc\nGroup=foogrp\n";
-        assert!(refs(content).is_empty());
+        // systemd.syntax(7) true booleans, any case: each skips the
+        // file whole.
+        for spelling in ["yes", "Yes", "YES", "true", "True", "1", "on", "On"] {
+            let content = format!("[Service]\nDynamicUser={spelling}\nUser=foosvc\nGroup=foogrp\n");
+            assert!(
+                refs(&content).is_empty(),
+                "DynamicUser={spelling} must skip the file"
+            );
+        }
+    }
+
+    #[test]
+    fn unit_refs_dynamic_user_false_spellings_still_judge() {
+        // False booleans do not skip: the references are still judged.
+        for spelling in ["no", "false", "0", "off"] {
+            let content = format!("[Service]\nDynamicUser={spelling}\nUser=foosvc\nGroup=foogrp\n");
+            assert_eq!(
+                refs(&content),
+                vec![
+                    (false, "User", "foosvc".to_string()),
+                    (true, "Group", "foogrp".to_string()),
+                ],
+                "DynamicUser={spelling} must not skip the file"
+            );
+        }
     }
 
     #[test]
@@ -562,6 +597,27 @@ mod tests {
             !has(&results, "systemd-unit-unknown-group"),
             "standard socket group must stay quiet: {results:?}"
         );
+    }
+
+    #[test]
+    fn dynamic_user_true_spellings_stay_quiet() {
+        // End to end: DynamicUser=true/1/on/Yes with unknown accounts
+        // fires nothing, whatever the spelling.
+        for spelling in ["true", "1", "on", "Yes"] {
+            let dir = tempfile::TempDir::new().expect("tmpdir");
+            let content = format!(
+                "[Service]\nDynamicUser={spelling}\nUser=ghostsvc\nGroup=ghostgrp\nExecStart=/usr/bin/probe\n"
+            );
+            let pkg = users_pkg(
+                &dir,
+                &[("/usr/lib/systemd/system/probe.service", content.as_str())],
+            );
+            let results = findings_for(&pkg);
+            assert!(
+                results.is_empty(),
+                "DynamicUser={spelling} must stay quiet: {results:?}"
+            );
+        }
     }
 
     #[test]
