@@ -7294,7 +7294,7 @@ impl BinariesCheck {
                 && h.flags.contains('W')
                 && h.flags.contains('E')
         }) {
-            add_info(out, Level::Error, pkg, "rwx-segment", &[&pkgfile.name]);
+            add_info(out, Level::Warning, pkg, "rwx-segment", &[&pkgfile.name]);
         }
     }
 
@@ -7826,7 +7826,7 @@ impl BinariesCheck {
         {
             add_info(
                 out,
-                Level::Error,
+                Level::Warning,
                 pkg,
                 "executable-with-non-pic-code",
                 &[&pkgfile.name],
@@ -13599,7 +13599,7 @@ mod tests {
     }
 
     /// Annocheck's `rwx-seg` test: a `PT_LOAD` segment mapped
-    /// readable, writable and executable at once fires once, at Error.
+    /// readable, writable and executable at once fires once, at Warning.
     #[test]
     fn rwx_segment_fires_and_stays_quiet() {
         let config = test_config();
@@ -13615,11 +13615,11 @@ mod tests {
             out.results().to_vec()
         };
         use goblin::elf::header::{EM_SPARC, EM_X86_64, ET_DYN, ET_EXEC, ET_REL};
-        // RWX LOAD fires exactly once, at Error.
+        // RWX LOAD fires exactly once, at Warning.
         let results = run(ET_EXEC, vec![phdr("LOAD", "RWE")]);
         let lines = lines_for(&results, "rwx-segment");
         assert_eq!(lines.len(), 1, "must fire once: {results:?}");
-        assert!(lines[0].contains(" E: "), "Error level: {}", lines[0]);
+        assert!(lines[0].contains(" W: "), "Warning level: {}", lines[0]);
         // RW and RX LOADs stay quiet, as does a second RWE-free shape.
         assert!(lines_for(&run(ET_EXEC, vec![phdr("LOAD", "RW ")],), "rwx-segment").is_empty());
         assert!(lines_for(&run(ET_DYN, vec![phdr("LOAD", "R E")]), "rwx-segment").is_empty());
@@ -13661,7 +13661,7 @@ mod tests {
 
     /// Annocheck's textrel test, the PIE-executable shape: DT_TEXTREL
     /// on a dynamically linked executable that is not a shared object
-    /// fires `executable-with-non-pic-code` once, at Error.
+    /// fires `executable-with-non-pic-code` once, at Warning.
     #[test]
     fn executable_with_non_pic_code_fires_and_stays_quiet() {
         let config = test_config();
@@ -13674,7 +13674,7 @@ mod tests {
             out.results().to_vec()
         };
         // PIE executable (ET_DYN, PT_INTERP, not .so-named) with
-        // DT_TEXTREL: fires exactly once, at Error.
+        // DT_TEXTREL: fires exactly once, at Warning.
         let mk_pie = || {
             let mut info = syn_info();
             info.elf_type = goblin::elf::header::ET_DYN;
@@ -13686,7 +13686,7 @@ mod tests {
         let results = run(&pie);
         let lines = lines_for(&results, "executable-with-non-pic-code");
         assert_eq!(lines.len(), 1, "must fire once: {results:?}");
-        assert!(lines[0].contains(" E: "), "Error level: {}", lines[0]);
+        assert!(lines[0].contains(" W: "), "Warning level: {}", lines[0]);
         assert!(
             lines_for(&results, "shlib-with-non-pic-code").is_empty(),
             "the shlib arm must not fire for an executable: {results:?}"
